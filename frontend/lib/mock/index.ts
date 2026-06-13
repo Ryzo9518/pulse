@@ -26,6 +26,11 @@ import type {
   AdminNotification,
   Document,
   AdminOnboardingSummary,
+  IltSession,
+  TrainingEnrolment,
+  BillableMilestone,
+  BillableSummaryRow,
+  MilestoneKey,
 } from '@/types/database'
 import { TOTAL_POLICIES, TOTAL_SOPS, TOTAL_FORMS } from '@/lib/constants'
 
@@ -52,6 +57,14 @@ import {
 } from './expenses'
 import { messages as seedMessages, adminNotifications } from './comms'
 import { documents } from './documents'
+import {
+  iltSessions,
+  trainingEnrolments as seedEnrolments,
+  computeMilestones,
+  nextMilestone,
+  findSession,
+  formatSessionLabel,
+} from './training'
 
 // ── Module-level mutable state (cloned from seeds so seeds stay pristine) ──
 const employeeState: Employee[] = seedEmployees.map((e) => ({ ...e }))
@@ -60,6 +73,7 @@ const taskStatusState: OnboardingTaskStatus[] = seedTaskStatuses.map((s) => ({
   ...s,
 }))
 const messageState: Message[] = seedMessages.map((m) => ({ ...m }))
+const enrolmentState: TrainingEnrolment[] = seedEnrolments.map((e) => ({ ...e }))
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
@@ -76,6 +90,72 @@ export function listEmployees(): Employee[] {
 
 export function getEmployee(id: string): Employee | undefined {
   return employeeState.find((e) => e.id === id)
+}
+
+// ── Training / certification (Sage Intacct billable-readiness tracker) ────────
+
+/** All bookable Sage U instructor-led sessions. */
+export function listIltSessions(): IltSession[] {
+  return iltSessions
+}
+
+/** The current employee's training enrolment, if any. */
+export function getTrainingEnrolment(
+  employeeId: string,
+): TrainingEnrolment | undefined {
+  return enrolmentState.find((e) => e.employee_id === employeeId)
+}
+
+/** Projected billable milestones for an employee (supervised → ILT → certified). */
+export function getEmployeeMilestones(employeeId: string): BillableMilestone[] {
+  const employee = getEmployee(employeeId)
+  if (!employee) return []
+  return computeMilestones(employee, getTrainingEnrolment(employeeId))
+}
+
+/**
+ * Which employees the tracker treats as junior consultants: anyone with a
+ * training enrolment, plus onboarding/probation staff in the Consulting team
+ * (so managers can also spot consultants who have not enrolled yet).
+ */
+function isJuniorConsultant(e: Employee): boolean {
+  if (enrolmentState.some((en) => en.employee_id === e.id)) return true
+  return (
+    e.department === 'Consulting' &&
+    (e.status === 'onboarding' || e.status === 'probation')
+  )
+}
+
+/** Admin roll-up: every junior consultant's projected billable dates. */
+export function getBillableSummary(): BillableSummaryRow[] {
+  const rows = employeeState.filter(isJuniorConsultant).map((e) => {
+    const enrolment = getTrainingEnrolment(e.id)
+    const milestones = computeMilestones(e, enrolment)
+    const byKey = (k: MilestoneKey) => milestones.find((m) => m.key === k)?.date ?? null
+    const session = findSession(enrolment?.session_id ?? null)
+    return {
+      employee_id: e.id,
+      display_name: e.display_name,
+      job_title: e.job_title,
+      avatar_initials: e.avatar_initials,
+      avatar_color: e.avatar_color,
+      session_id: enrolment?.session_id ?? null,
+      session_label: session ? formatSessionLabel(session) : null,
+      supervised_date: byKey('supervised'),
+      ilt_date: byKey('ilt'),
+      certified_date: byKey('certified'),
+      next_milestone: nextMilestone(milestones),
+    }
+  })
+  // Soonest certified date first; unscheduled (null) sort to the bottom.
+  return rows.sort((a, b) => {
+    if (a.certified_date && b.certified_date) {
+      return a.certified_date.localeCompare(b.certified_date)
+    }
+    if (a.certified_date) return -1
+    if (b.certified_date) return 1
+    return a.display_name.localeCompare(b.display_name)
+  })
 }
 
 export function listPhases(): OnboardingPhase[] {
@@ -288,6 +368,59 @@ export function postMessage(
   return message
 }
 
+/**
+ * Set (or change) the ILT session a consultant is booked on. Creates an
+ * enrolment if the consultant does not have one yet. Pass null to clear.
+ */
+export function setTrainingSession(
+  employeeId: string,
+  sessionId: string | null,
+): TrainingEnrolment {
+  let entry = enrolmentState.find((e) => e.employee_id === employeeId)
+  const now = new Date().toISOString()
+  if (!entry) {
+    entry = {
+      employee_id: employeeId,
+      session_id: sessionId,
+      cert_path: 'implementation',
+      getting_started_done: false,
+      ilt_done: false,
+      certified: false,
+      updated_at: now,
+    }
+    enrolmentState.push(entry)
+  } else {
+    entry.session_id = sessionId
+    entry.updated_at = now
+  }
+  return entry
+}
+
+/** Toggle one of a consultant's progress milestones. Creates an enrolment if needed. */
+export function setTrainingMilestone(
+  employeeId: string,
+  key: 'getting_started_done' | 'ilt_done' | 'certified',
+  value: boolean,
+): TrainingEnrolment {
+  let entry = enrolmentState.find((e) => e.employee_id === employeeId)
+  const now = new Date().toISOString()
+  if (!entry) {
+    entry = {
+      employee_id: employeeId,
+      session_id: null,
+      cert_path: 'implementation',
+      getting_started_done: false,
+      ilt_done: false,
+      certified: false,
+      updated_at: now,
+    }
+    enrolmentState.push(entry)
+  }
+  entry[key] = value
+  entry.updated_at = now
+  return entry
+}
+
 // ── Test-only helper: restore all mutable state to the original seeds. ─────────
 // Not used by screens; lets unit tests run in isolation.
 export function __resetMockState(): void {
@@ -307,6 +440,15 @@ export function __resetMockState(): void {
     messageState.length,
     ...seedMessages.map((m) => ({ ...m }))
   )
+  enrolmentState.splice(
+    0,
+    enrolmentState.length,
+    ...seedEnrolments.map((e) => ({ ...e }))
+  )
 }
+
+// Presentation-only formatters (no data access) re-exported through the seam so
+// screens still import everything from '@/lib/mock'.
+export { formatDate, formatDateRange, formatSessionLabel } from './training'
 
 export { CURRENT_EMPLOYEE_ID, ONBOARDING_EMPLOYEE_ID }
