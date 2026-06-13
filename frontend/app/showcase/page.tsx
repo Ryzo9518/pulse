@@ -15,6 +15,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
 import {
   StatCard,
+  StatCardGrid,
   ActionCard,
   Badge,
   Card,
@@ -72,12 +73,12 @@ export default function ShowcasePage() {
 
       <div className="px-10 py-6">
         <Section title="Stat cards">
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <StatCardGrid>
             <StatCard value={28} label="Total tasks" accent="red" />
             <StatCard value={12} label="Completed" accent="green" />
             <StatCard value={7} label="In progress" accent="amber" />
             <StatCard value={9} label="Pending" accent="blue" />
-          </div>
+          </StatCardGrid>
         </Section>
 
         <Section title="Action cards">

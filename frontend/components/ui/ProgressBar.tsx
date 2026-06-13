@@ -9,6 +9,8 @@ export interface ProgressBarProps {
   label?: string
   /** Track height in px. Defaults to 8. */
   height?: number
+  /** Accessible name for the progress bar (set as aria-label). */
+  ariaLabel?: string
   className?: string
 }
 
@@ -21,6 +23,7 @@ export function ProgressBar({
   percent,
   label,
   height = 8,
+  ariaLabel,
   className = '',
 }: ProgressBarProps) {
   const raw = percent ?? (max > 0 ? (value / max) * 100 : 0)
@@ -32,6 +35,7 @@ export function ProgressBar({
         className="flex-1 overflow-hidden rounded-full bg-surface-border-light"
         style={{ height }}
         role="progressbar"
+        aria-label={ariaLabel}
         aria-valuenow={Math.round(pct)}
         aria-valuemin={0}
         aria-valuemax={100}

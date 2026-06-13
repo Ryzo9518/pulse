@@ -15,6 +15,8 @@ export interface AvatarProps {
   initials?: string
   /** Background colour (hex, typically from AVATAR_COLOURS). Falls back to a name-derived palette colour. */
   color?: string
+  /** When set, the avatar becomes a labelled image (role="img" + aria-label) instead of decorative. */
+  label?: string
   size?: AvatarSize
   className?: string
 }
@@ -39,14 +41,16 @@ function deriveColor(name?: string): string {
 /**
  * Circular initials avatar. Mono font, colour from prop or name-derived.
  */
-export function Avatar({ name, initials, color, size = 'md', className = '' }: AvatarProps) {
+export function Avatar({ name, initials, color, label, size = 'md', className = '' }: AvatarProps) {
   const text = initials ?? deriveInitials(name)
   const bg = color ?? deriveColor(name)
   return (
     <span
       className={`inline-flex flex-shrink-0 items-center justify-center rounded-full font-mono font-bold text-white ${SIZE_CLASSES[size]} ${className}`}
       style={{ backgroundColor: bg }}
-      aria-hidden
+      role={label ? 'img' : undefined}
+      aria-label={label || undefined}
+      aria-hidden={label ? undefined : true}
     >
       {text}
     </span>

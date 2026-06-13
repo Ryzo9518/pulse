@@ -10,6 +10,8 @@ import {
   type ReactNode,
 } from 'react'
 
+export type ToastVariant = 'default' | 'success' | 'error'
+
 export interface ToastOptions {
   /** Bold white title line. */
   title: string
@@ -17,6 +19,14 @@ export interface ToastOptions {
   message?: string
   /** Auto-dismiss delay in ms. Defaults to 5000. Pass 0 to disable auto-dismiss. */
   duration?: number
+  /** Accent/border tone. `error` is also announced assertively. Defaults to `default`. */
+  variant?: ToastVariant
+}
+
+const VARIANT_ACCENT: Record<ToastVariant, string> = {
+  default: 'border-l-jera-red',
+  success: 'border-l-jera-green',
+  error: 'border-l-jera-red',
 }
 
 interface ToastItem extends ToastOptions {
@@ -69,11 +79,15 @@ export function ToastProvider({ children }: ToastProviderProps) {
     <ToastContext.Provider value={value}>
       {children}
       <div className="pointer-events-none fixed right-4 top-4 z-[9999] flex w-[340px] flex-col gap-2">
-        {toasts.map((t) => (
+        {toasts.map((t) => {
+          const variant = t.variant ?? 'default'
+          const isError = variant === 'error'
+          return (
           <div
             key={t.id}
-            className="animate-notif-in pointer-events-auto flex items-start gap-[10px] rounded-[10px] border border-white/10 border-l-[3px] border-l-jera-red bg-surface-sidebar px-4 py-[14px] shadow-card-lg"
-            role="status"
+            className={`animate-notif-in pointer-events-auto flex items-start gap-[10px] rounded-[10px] border border-white/10 border-l-[3px] ${VARIANT_ACCENT[variant]} bg-surface-sidebar px-4 py-[14px] shadow-card-lg`}
+            role={isError ? 'alert' : 'status'}
+            aria-live={isError ? 'assertive' : 'polite'}
           >
             <div className="min-w-0 flex-1">
               <div className="mb-[2px] text-xs font-bold text-white">{t.title}</div>
@@ -90,7 +104,8 @@ export function ToastProvider({ children }: ToastProviderProps) {
               &times;
             </button>
           </div>
-        ))}
+          )
+        })}
       </div>
     </ToastContext.Provider>
   )

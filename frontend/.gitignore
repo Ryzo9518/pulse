@@ -10,3 +10,7 @@ next-env.d.ts
 
 # test coverage
 coverage
+
+# local env (never commit secrets)
+.env
+.env*.local

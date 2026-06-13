@@ -24,6 +24,8 @@ export interface DataTableProps<T> {
   headerTone?: DataTableHeaderTone
   /** Optional click handler per row. */
   onRowClick?: (row: T, index: number) => void
+  /** Accessible label for an interactive row (used with `onRowClick`). Falls back to "Row {index+1}". */
+  rowLabel?: (row: T, index: number) => string
   /** Rendered (spanning all columns) when there are no rows. */
   emptyMessage?: ReactNode
   className?: string
@@ -45,6 +47,7 @@ export function DataTable<T>({
   rowKey,
   headerTone = 'dark',
   onRowClick,
+  rowLabel,
   emptyMessage = 'No records to display.',
   className = '',
 }: DataTableProps<T>) {
@@ -85,6 +88,21 @@ export function DataTable<T>({
             <tr
               key={rowKey ? rowKey(row, rIdx) : rIdx}
               onClick={onRowClick ? () => onRowClick(row, rIdx) : undefined}
+              onKeyDown={
+                onRowClick
+                  ? (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        onRowClick(row, rIdx)
+                      }
+                    }
+                  : undefined
+              }
+              role={onRowClick ? 'button' : undefined}
+              tabIndex={onRowClick ? 0 : undefined}
+              aria-label={
+                onRowClick ? (rowLabel ? rowLabel(row, rIdx) : `Row ${rIdx + 1}`) : undefined
+              }
               className={`${rIdx % 2 === 1 ? '[&>td]:bg-surface' : ''} ${
                 onRowClick ? 'cursor-pointer hover:[&>td]:bg-jera-blue-light' : ''
               }`}
