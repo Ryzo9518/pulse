@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { MockSessionProvider } from '@/lib/mock/session'
+import { ToastProvider } from '@/components/ui'
 
 export const metadata: Metadata = {
   title: 'PULSE — The heartbeat of your team',
@@ -11,7 +13,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen">
-        {children}
+        <MockSessionProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </MockSessionProvider>
       </body>
     </html>
   )
