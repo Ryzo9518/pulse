@@ -1,0 +1,49 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  workflow_dispatch:
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            EVENT: ${{ github.event_name }}
+
+            You are reviewing code. You are NOT making changes — do not Edit, Write, or modify any files. Read-only review only.
+
+            If EVENT is `pull_request`:
+              1. Run `gh pr diff ${{ github.event.pull_request.number }}` to see the changes.
+              2. Read 2-4 of the most relevant changed files for context.
+              3. Post ONE concise top-level comment via `gh pr comment ${{ github.event.pull_request.number }} --body "..."` covering: bugs, missing edge cases, stability risks, consistency with existing patterns. Use `mcp__github_inline_comment__create_inline_comment` only for critical line-specific issues (max 3).
+              4. Stop.
+
+            If EVENT is `workflow_dispatch`:
+              1. Run `git log -5 --oneline` to see recent commits.
+              2. Run `git show HEAD --stat` and skim the most recent changes.
+              3. Read the top-level README if present, then 3-5 representative source files to understand the project.
+              4. Open ONE issue via `gh issue create --title "Claude review: <date>" --body "..."` containing: a 1-paragraph summary of the project, top 3 risks or gaps you noticed, and 3 concrete improvement suggestions.
+              5. Stop.
+
+            Be terse. Explain WHY, not WHAT. Do not explore further than needed to write a useful review.
+
+          claude_args: |
+            --model claude-sonnet-4-6
+            --max-turns 60
+            --system-prompt "You are a careful senior code reviewer. You only review — you never modify files. Focus on bugs, stability, security, and architectural concerns. Prefer concise findings with clear rationale over exhaustive lists. When a change is fine, say so briefly and move on."
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue create:*),Bash(gh issue list:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),Read,Glob,Grep"

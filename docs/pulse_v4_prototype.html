@@ -1,0 +1,1966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PULSE — The heartbeat of your team</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: 'Outfit', sans-serif; background: #FAF9F7; color: #1a1a1a; }
+  ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #ddd; border-radius: 3px; }
+
+  :root {
+    --red: #911431;
+    --red-light: #F5E8EB;
+    --red-glow: #91143120;
+    --blue: #2b72b9;
+    --blue-light: #EBF3FB;
+    --pink: #db4fb2;
+    --pink-light: #FBEDF7;
+    --bg: #FAF9F7;
+    --card: #FFFFFF;
+    --border: #E8E4DF;
+    --border-light: #F0ECE8;
+    --text: #1a1a1a;
+    --text-muted: #8C857D;
+    --text-secondary: #6B645C;
+    --sidebar-bg: #1a1a1a;
+    --sidebar-hover: #2a2a2a;
+    --sidebar-active: #911431;
+    --green: #2D8A56;
+    --amber: #C4880C;
+    --radius: 14px;
+    --radius-sm: 8px;
+    --radius-xs: 5px;
+    --shadow: 0 1px 3px rgba(0,0,0,.04), 0 4px 12px rgba(0,0,0,.03);
+    --shadow-lg: 0 4px 24px rgba(0,0,0,.06);
+  }
+
+  @keyframes fadeUp { from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);} }
+  @keyframes slideIn { from{opacity:0;transform:translateX(16px);}to{opacity:1;transform:translateX(0);} }
+  @keyframes notifIn { from{opacity:0;transform:translateX(24px) scale(.95);}to{opacity:1;transform:translateX(0) scale(1);} }
+  @keyframes shake { 0%,100%{transform:translateX(0);}25%{transform:translateX(-6px);}75%{transform:translateX(6px);} }
+  @keyframes pulse-ring { 0%{box-shadow:0 0 0 0 #91143140;}100%{box-shadow:0 0 0 12px #91143100;} }
+  @keyframes dot-blink { 0%,100%{opacity:.3;}50%{opacity:1;} }
+  .fade-up { animation: fadeUp .35s ease both; }
+
+  /* ── AUTH SCREENS ── */
+  .auth-screen {
+    display: none; min-height: 100vh; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d1520 50%, #1a1a1a 100%);
+    position: relative; overflow: hidden;
+  }
+  .auth-screen.active { display: flex; }
+  .auth-screen::before {
+    content: ''; position: absolute; width: 600px; height: 600px; border-radius: 50%;
+    background: radial-gradient(circle, #91143115 0%, transparent 70%);
+    top: -200px; right: -100px;
+  }
+  .auth-screen::after {
+    content: ''; position: absolute; width: 400px; height: 400px; border-radius: 50%;
+    background: radial-gradient(circle, #2b72b910 0%, transparent 70%);
+    bottom: -150px; left: -100px;
+  }
+  .auth-card {
+    background: #fff; border-radius: 20px; padding: 44px 40px; width: 100%; max-width: 420px;
+    box-shadow: 0 20px 60px #00000030; position: relative; z-index: 1; animation: fadeUp .4s ease;
+  }
+  .auth-logo { text-align: center; margin-bottom: 32px; }
+  .auth-logo-icon {
+    width: 56px; height: 56px; background: var(--red); border-radius: 14px;
+    display: inline-flex; align-items: center; justify-content: center; margin-bottom: 14px;
+    box-shadow: 0 4px 20px #91143140;
+  }
+  .auth-logo-icon span { color: #fff; font-weight: 900; font-size: 24px; }
+  .auth-title { font-size: 24px; font-weight: 800; color: var(--text); }
+  .auth-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+  .auth-form { display: flex; flex-direction: column; gap: 16px; }
+  .auth-error {
+    background: #DB443710; border: 1px solid #DB443730; border-radius: var(--radius-sm);
+    padding: 10px 14px; font-size: 13px; color: #DB4437; display: none; animation: shake .3s ease;
+  }
+  .auth-success {
+    background: #2D8A5610; border: 1px solid #2D8A5630; border-radius: var(--radius-sm);
+    padding: 10px 14px; font-size: 13px; color: var(--green); display: none;
+  }
+  .auth-link { font-size: 13px; color: var(--blue); cursor: pointer; text-align: center; font-weight: 500; }
+  .auth-link:hover { text-decoration: underline; }
+  .auth-hint { font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 4px; line-height: 1.5; }
+  .auth-divider { display: flex; align-items: center; gap: 12px; margin: 4px 0; }
+  .auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .auth-divider span { font-size: 11px; color: var(--text-muted); font-weight: 600; letter-spacing: 1px; }
+
+  /* 2FA OTP input */
+  .otp-inputs { display: flex; gap: 8px; justify-content: center; margin: 8px 0; }
+  .otp-input {
+    width: 48px; height: 56px; border: 2px solid var(--border); border-radius: var(--radius-sm);
+    font-size: 24px; font-weight: 800; font-family: 'JetBrains Mono', monospace;
+    text-align: center; outline: none; background: var(--bg); color: var(--text); transition: all .2s;
+  }
+  .otp-input:focus { border-color: var(--red); box-shadow: 0 0 0 3px var(--red-glow); }
+  .otp-input.filled { border-color: var(--green); background: #2D8A5608; }
+
+  /* ── APP SHELL ── */
+  #app-shell { display: none; height: 100vh; overflow: hidden; }
+  #app-shell.active { display: flex; }
+
+  /* ── SIDEBAR ── */
+  #sidebar {
+    width: 260px; min-width: 260px; background: var(--sidebar-bg);
+    display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
+    border-right: 1px solid #ffffff08;
+  }
+  .sidebar-brand { padding: 24px 22px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #ffffff0a; }
+  .brand-icon { width: 38px; height: 38px; background: var(--red); border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 12px #91143140; }
+  .brand-icon span { color: #fff; font-weight: 900; font-size: 18px; }
+  .brand-text { display: flex; flex-direction: column; }
+  .brand-name { color: #fff; font-weight: 800; font-size: 17px; letter-spacing: 2px; }
+  .brand-tagline { color: #ffffff40; font-size: 10px; font-weight: 500; letter-spacing: 0.5px; margin-top: 1px; }
+
+  .sidebar-section { padding: 16px 12px 4px; }
+  .sidebar-section-label { font-size: 10px; font-weight: 700; color: #ffffff25; letter-spacing: 2px; text-transform: uppercase; padding: 0 10px; margin-bottom: 6px; }
+
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; padding: 0 12px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px;
+    cursor: pointer; color: #ffffff70; font-size: 13.5px; font-weight: 500; transition: all .15s;
+    border: 1px solid transparent;
+  }
+  .nav-item:hover { background: var(--sidebar-hover); color: #ffffffb0; }
+  .nav-item.active { background: var(--red); color: #fff; font-weight: 600; box-shadow: 0 2px 12px #91143150; }
+  .nav-icon { font-size: 16px; width: 22px; text-align: center; flex-shrink: 0; }
+  .nav-badge { margin-left: auto; background: #ffffff15; color: #ffffff60; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 4px; }
+  .nav-item.active .nav-badge { background: #ffffff25; color: #fff; }
+
+  .sidebar-employee { margin-top: auto; border-top: 1px solid #ffffff0a; }
+  .sidebar-user-area { padding: 12px 16px; }
+  .emp-card-mini { background: #ffffff08; border-radius: 10px; padding: 12px; display: flex; align-items: center; gap: 10px; }
+  .emp-avatar-mini { width: 36px; height: 36px; border-radius: 50%; background: var(--red); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+  .emp-info-mini { flex: 1; min-width: 0; }
+  .emp-name-mini { color: #fff; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .emp-role-mini { color: #ffffff40; font-size: 11px; }
+  .sidebar-logout {
+    padding: 8px 16px 14px; display: flex;
+  }
+  .logout-btn {
+    width: 100%; background: #ffffff08; border: 1px solid #ffffff10; border-radius: 8px;
+    color: #ffffff50; font-size: 12px; font-weight: 600; padding: 8px; cursor: pointer;
+    font-family: 'Outfit', sans-serif; transition: all .15s; text-align: center;
+  }
+  .logout-btn:hover { background: #ffffff15; color: #ffffffa0; border-color: #ffffff20; }
+
+  .admin-section { display: none; }
+  .admin-section.visible { display: block; }
+
+  /* ── MAIN ── */
+  #content { flex: 1; overflow-y: auto; overflow-x: hidden; }
+  .view { display: none; } .view.active { display: block; }
+
+  .page-header { padding: 32px 40px 0; margin-bottom: 28px; }
+  .page-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: var(--red); margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .page-eyebrow::before { content: ''; width: 16px; height: 2px; background: var(--red); border-radius: 1px; }
+  .page-title { font-size: 28px; font-weight: 800; color: var(--text); line-height: 1.2; }
+  .page-sub { font-size: 14px; color: var(--text-muted); margin-top: 4px; }
+  .page-body { padding: 0 40px 40px; }
+
+  /* ── CARDS ── */
+  .card { background: var(--card); border-radius: var(--radius); border: 1px solid var(--border); padding: 24px; box-shadow: var(--shadow); }
+  .card + .card { margin-top: 14px; }
+  .card-label { font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 14px; }
+
+  /* ── BUTTONS ── */
+  .btn { border: none; border-radius: var(--radius-sm); padding: 10px 20px; font-size: 13px; font-weight: 600; font-family: 'Outfit', sans-serif; cursor: pointer; transition: all .2s; display: inline-flex; align-items: center; gap: 7px; }
+  .btn-primary { background: var(--red); color: #fff; }
+  .btn-primary:hover { background: #7a1029; box-shadow: 0 4px 16px var(--red-glow); }
+  .btn-primary:disabled { background: #ccc; cursor: not-allowed; box-shadow: none; }
+  .btn-secondary { background: var(--blue); color: #fff; }
+  .btn-secondary:hover { background: #245f9e; }
+  .btn-ghost { background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: #f0ece8; border-color: #d5d0ca; }
+  .btn-sm { padding: 5px 12px; font-size: 12px; border-radius: var(--radius-xs); }
+  .btn-danger { background: #DB4437; color: #fff; }
+  .btn-danger:hover { background: #c33a2e; }
+  .btn-full { width: 100%; justify-content: center; }
+
+  /* ── BADGES ── */
+  .badge { display: inline-flex; align-items: center; border-radius: var(--radius-xs); padding: 2px 9px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+
+  /* ── AVATAR ── */
+  .avatar { border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+  /* ── PROGRESS ── */
+  .prog-track { height: 8px; background: var(--border-light); border-radius: 99px; overflow: hidden; }
+  .prog-fill { height: 100%; border-radius: 99px; transition: width .5s ease; }
+
+  /* ── INPUTS ── */
+  .field-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 5px; }
+  .field-input {
+    width: 100%; padding: 11px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+    font-size: 14px; font-family: 'Outfit', sans-serif; outline: none; background: #fff; color: var(--text); transition: all .2s;
+  }
+  .field-input:focus { border-color: var(--red); box-shadow: 0 0 0 3px var(--red-glow); }
+  .field-textarea { resize: vertical; min-height: 80px; }
+  .divider { height: 1px; background: var(--border-light); margin: 16px 0; }
+
+  /* ── NOTIFICATIONS ── */
+  #notif-stack { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; width: 340px; pointer-events: none; }
+  .notif-toast { background: var(--sidebar-bg); border: 1px solid #ffffff12; border-left: 3px solid var(--red); border-radius: 10px; padding: 14px 16px; display: flex; align-items: flex-start; gap: 10px; box-shadow: 0 8px 32px #0008; animation: notifIn .3s ease; pointer-events: all; }
+  .notif-body { flex: 1; min-width: 0; }
+  .notif-name { font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 2px; }
+  .notif-msg { font-size: 12px; color: #aaa; line-height: 1.4; }
+  .notif-close { background: none; border: none; color: #555; cursor: pointer; font-size: 18px; line-height: 1; flex-shrink: 0; padding: 0; }
+
+  /* ── MODAL ── */
+  .modal-overlay { position: fixed; inset: 0; background: #00000060; backdrop-filter: blur(4px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .modal-box { background: #fff; border-radius: 20px; max-width: 520px; width: 100%; overflow: hidden; box-shadow: 0 24px 80px #0003; animation: fadeUp .25s ease; }
+  .modal-header { padding: 24px 28px; }
+  .modal-eyebrow { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #fff9; margin-bottom: 6px; }
+  .modal-title { font-size: 20px; font-weight: 800; color: #fff; }
+  .modal-body { padding: 28px; }
+
+  /* ── DASHBOARD ── */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+  .stat-card::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: var(--radius) var(--radius) 0 0; }
+  .stat-card:nth-child(1)::after { background: var(--red); }
+  .stat-card:nth-child(2)::after { background: var(--green); }
+  .stat-card:nth-child(3)::after { background: var(--amber); }
+  .stat-card:nth-child(4)::after { background: var(--blue); }
+  .stat-value { font-size: 32px; font-weight: 800; line-height: 1; }
+  .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 5px; }
+
+  .action-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .action-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; cursor: pointer; transition: all .2s; text-align: left; display: flex; flex-direction: column; gap: 8px; box-shadow: var(--shadow); }
+  .action-card:hover { border-color: var(--red); box-shadow: 0 4px 20px var(--red-glow); transform: translateY(-1px); }
+  .action-icon { font-size: 26px; }
+  .action-name { font-size: 14px; font-weight: 700; }
+  .action-desc { font-size: 12px; color: var(--text-muted); }
+
+  .team-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+  .team-row + .team-row { border-top: 1px solid var(--border-light); }
+  .team-info { flex: 1; min-width: 0; }
+  .team-name { font-size: 13px; font-weight: 600; }
+  .team-role { font-size: 11px; color: var(--text-muted); }
+  .mini-prog { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .mini-prog-track { flex: 1; height: 4px; background: var(--border-light); border-radius: 99px; overflow: hidden; }
+  .mini-prog-fill { height: 100%; border-radius: 99px; }
+  .mini-prog-label { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+
+  /* ── WORKFLOW ── */
+  .phase-block { margin-bottom: 10px; }
+  .phase-header { width: 100%; border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; display: flex; align-items: center; gap: 14px; cursor: pointer; transition: all .2s; text-align: left; background: var(--card); box-shadow: var(--shadow); }
+  .phase-header:hover { border-color: var(--red); }
+  .phase-header.open { background: var(--sidebar-bg); border-color: var(--red); border-radius: var(--radius) var(--radius) 0 0; box-shadow: none; }
+  .phase-icon { font-size: 22px; flex-shrink: 0; }
+  .phase-info { flex: 1; }
+  .phase-name { font-size: 14px; font-weight: 700; }
+  .phase-header.open .phase-name { color: #fff; }
+  .phase-sub { font-size: 12px; color: var(--text-muted); }
+  .phase-header.open .phase-sub { color: #aaa; }
+  .phase-right { display: flex; align-items: center; gap: 10px; }
+  .phase-mini-bar { width: 60px; height: 4px; background: var(--border-light); border-radius: 99px; overflow: hidden; }
+  .phase-header.open .phase-mini-bar { background: #ffffff20; }
+  .phase-mini-fill { height: 100%; border-radius: 99px; background: var(--red); }
+  .phase-chevron { font-size: 12px; color: var(--text-muted); }
+  .phase-header.open .phase-chevron { color: #aaa; }
+  .phase-tasks { border: 1px solid var(--red); border-top: none; border-radius: 0 0 var(--radius) var(--radius); overflow: hidden; background: var(--card); }
+  .task-row { display: flex; align-items: center; gap: 12px; padding: 13px 18px; border-top: 1px solid var(--border-light); transition: background .2s; }
+  .task-row:first-child { border-top: none; }
+  .task-row.status-done { background: #f0faf4; }
+  .task-row.status-inprogress { background: #fffbf0; }
+  .task-row.status-pending { background: #fff; }
+  .task-meta { flex: 1; min-width: 0; }
+  .task-title { font-size: 13px; font-weight: 600; }
+  .task-title.done { text-decoration: line-through; color: #aaa; }
+  .task-tags { display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+  .task-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  .prio-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── SOP ── */
+  .sop-subnav { display: flex; gap: 6px; margin-bottom: 24px; }
+  .sop-subnav-btn { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 16px; cursor: pointer; color: var(--text-muted); font-size: 13px; font-weight: 600; font-family: 'Outfit', sans-serif; display: flex; gap: 6px; align-items: center; transition: all .15s; }
+  .sop-subnav-btn.active { background: var(--red); color: #fff; border-color: var(--red); }
+  .sop-steps-nav { display: flex; gap: 6px; margin-bottom: 24px; flex-wrap: wrap; }
+  .sop-step-btn { width: 36px; height: 36px; border-radius: var(--radius-sm); border: none; cursor: pointer; font-size: 13px; font-weight: 700; font-family: 'JetBrains Mono', monospace; transition: all .2s; }
+  .sop-step-btn.past { background: var(--green); color: #fff; }
+  .sop-step-btn.current { background: var(--red); color: #fff; box-shadow: 0 2px 8px var(--red-glow); }
+  .sop-step-btn.future { background: var(--border-light); color: var(--text-muted); }
+  .sop-card { background: var(--card); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; margin-bottom: 20px; box-shadow: var(--shadow-lg); }
+  .sop-card-header { background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%); padding: 28px 32px; }
+  .sop-header-inner { display: flex; align-items: center; gap: 16px; }
+  .sop-big-icon { font-size: 44px; }
+  .sop-eyebrow { font-size: 11px; color: var(--red); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; font-weight: 700; }
+  .sop-card-title { font-size: 22px; font-weight: 800; color: #fff; }
+  .sop-card-desc { color: #999; margin-top: 16px; font-size: 14px; line-height: 1.6; }
+  .sop-card-body { padding: 28px 32px; }
+  .sop-detail { font-size: 14px; color: var(--text-secondary); line-height: 1.7; margin-bottom: 20px; }
+  .sop-hints { display: flex; gap: 12px; flex-wrap: wrap; }
+  .sop-hint { border-radius: var(--radius-sm); padding: 10px 16px; display: flex; align-items: center; gap: 8px; flex: 1; min-width: 200px; }
+  .sop-hint.action { background: var(--red-light); border: 1px solid #91143120; }
+  .sop-hint.tip { background: #FFF8E6; border: 1px solid #C4880C20; }
+  .sop-hint-text.action { font-size: 13px; color: var(--red); font-weight: 600; }
+  .sop-hint-text.tip { font-size: 13px; color: var(--amber); }
+  .sop-nav { display: flex; gap: 12px; justify-content: space-between; align-items: center; }
+
+  /* ── PEOPLE ── */
+  .people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .person-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); text-align: center; transition: all .2s; }
+  .person-card:hover { border-color: var(--red); transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+  .person-avatar-lg { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 22px; color: #fff; margin: 0 auto 14px; font-family: 'JetBrains Mono', monospace; }
+  .person-name { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
+  .person-role { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+  .person-meta { font-size: 12px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 4px; }
+  .person-meta span { display: flex; align-items: center; gap: 6px; justify-content: center; }
+  .person-status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+  /* ── LEAVE ── */
+  .leave-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+  .leave-stat { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); text-align: center; }
+  .leave-stat-value { font-size: 36px; font-weight: 800; }
+  .leave-stat-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .leave-stat-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .leave-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+  .leave-table th { text-align: left; font-size: 11px; font-weight: 700; color: #fff; letter-spacing: 1px; text-transform: uppercase; padding: 12px 16px; background: var(--red); }
+  .leave-table th:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+  .leave-table th:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+  .leave-table td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border-light); }
+  .leave-table tr:nth-child(even) td { background: var(--red-light); }
+
+  /* ── CHAT & ANNOUNCEMENTS ── */
+  .chat-tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+  .chat-tab { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 18px; cursor: pointer; font-size: 13px; font-weight: 600; font-family: 'Outfit', sans-serif; color: var(--text-muted); transition: all .15s; }
+  .chat-tab.active { background: var(--red); color: #fff; border-color: var(--red); }
+  .chat-feed { max-height: 500px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+  .chat-msg {
+    display: flex; gap: 12px; padding: 14px 16px; border-radius: var(--radius);
+    background: var(--card); border: 1px solid var(--border); animation: fadeUp .25s ease;
+  }
+  .chat-msg.announcement { border-left: 3px solid var(--red); background: var(--red-light); }
+  .chat-msg-body { flex: 1; min-width: 0; }
+  .chat-msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .chat-msg-name { font-size: 13px; font-weight: 700; }
+  .chat-msg-time { font-size: 11px; color: var(--text-muted); }
+  .chat-msg-text { font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; }
+  .chat-msg-tag { font-size: 10px; font-weight: 700; color: var(--red); letter-spacing: 1px; text-transform: uppercase; }
+  .chat-compose {
+    display: flex; gap: 10px; padding: 16px; background: var(--card);
+    border: 1px solid var(--border); border-radius: var(--radius);
+  }
+  .chat-compose input { flex: 1; border: none; outline: none; font-size: 14px; font-family: 'Outfit', sans-serif; background: transparent; color: var(--text); }
+
+  /* ── MEETING REQUEST ── */
+  .meeting-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; box-shadow: var(--shadow); }
+  .meeting-slot { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; cursor: pointer; transition: all .15s; }
+  .meeting-slot:hover { border-color: var(--red); background: var(--red-light); }
+  .meeting-slot.selected { border-color: var(--red); background: var(--red-light); }
+  .meeting-slot-time { font-size: 14px; font-weight: 700; color: var(--text); min-width: 100px; }
+  .meeting-slot-label { font-size: 12px; color: var(--text-muted); }
+
+  /* ── ADMIN ── */
+  .admin-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+  .admin-table th { text-align: left; font-size: 11px; font-weight: 700; color: #fff; letter-spacing: 1px; text-transform: uppercase; padding: 12px 16px; background: var(--sidebar-bg); }
+  .admin-table th:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+  .admin-table th:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+  .admin-table td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border-light); vertical-align: middle; }
+  .admin-table tr:nth-child(even) td { background: var(--bg); }
+
+  /* ── UTIL ── */
+  .hidden { display: none !important; }
+  .mt-8 { margin-top: 8px; }
+  .mt-12 { margin-top: 12px; }
+  .mt-16 { margin-top: 16px; }
+  .mt-24 { margin-top: 24px; }
+  .mb-12 { margin-bottom: 12px; }
+  .mb-16 { margin-bottom: 16px; }
+  .mb-20 { margin-bottom: 20px; }
+  .flex { display: flex; }
+  .flex-col { flex-direction: column; }
+  .gap-6 { gap: 6px; }
+  .gap-8 { gap: 8px; }
+  .gap-10 { gap: 10px; }
+  .gap-12 { gap: 12px; }
+  .gap-16 { gap: 16px; }
+  .items-center { align-items: center; }
+  .justify-between { justify-content: space-between; }
+  .flex-1 { flex: 1; }
+  .fw-600 { font-weight: 600; }
+  .fw-700 { font-weight: 700; }
+  .fs-11 { font-size: 11px; }
+  .fs-12 { font-size: 12px; }
+  .fs-13 { font-size: 13px; }
+  .completed-tag { font-size: 11px; color: var(--green); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════════════════════
+     AUTH SCREENS
+     ════════════════════════════════════════════════════════════════════════════ -->
+
+<!-- LOGIN -->
+<div class="auth-screen active" id="screen-login">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-icon"><span>P</span></div>
+      <div class="auth-title">Welcome to PULSE</div>
+      <div class="auth-sub">Sign in with your Jera account</div>
+    </div>
+    <div class="auth-form">
+      <div class="auth-error" id="login-error">Invalid email or password. Please try again.</div>
+      <div>
+        <label class="field-label">Email address</label>
+        <input class="field-input" type="email" id="login-email" placeholder="yourname@jera.co.za" autocomplete="email">
+      </div>
+      <div>
+        <label class="field-label">Password</label>
+        <input class="field-input" type="password" id="login-pass" placeholder="••••••••">
+      </div>
+      <button class="btn btn-primary btn-full" id="login-btn">Sign In →</button>
+      <div class="auth-link" id="forgot-link">Forgot your password?</div>
+      <div class="auth-divider"><span>DEMO</span></div>
+      <div class="auth-hint">
+        Admin: <strong><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="85f7fce4ebc5efe0f7e4abe6eaabffe4">[email&#160;protected]</a></strong> · any password<br>
+        Employee: any <strong>@jera.co.za</strong> email · any password
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 2FA SCREEN -->
+<div class="auth-screen" id="screen-2fa">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-icon"><span>🔐</span></div>
+      <div class="auth-title">Two-Factor Authentication</div>
+      <div class="auth-sub">Enter the 6-digit code from your authenticator app</div>
+    </div>
+    <div class="auth-form">
+      <div class="auth-error" id="2fa-error">Invalid code. Please check your authenticator app.</div>
+      <div class="otp-inputs" id="otp-inputs">
+        <input class="otp-input" type="text" maxlength="1" inputmode="numeric" data-idx="0">
+        <input class="otp-input" type="text" maxlength="1" inputmode="numeric" data-idx="1">
+        <input class="otp-input" type="text" maxlength="1" inputmode="numeric" data-idx="2">
+        <input class="otp-input" type="text" maxlength="1" inputmode="numeric" data-idx="3">
+        <input class="otp-input" type="text" maxlength="1" inputmode="numeric" data-idx="4">
+        <input class="otp-input" type="text" maxlength="1" inputmode="numeric" data-idx="5">
+      </div>
+      <button class="btn btn-primary btn-full" id="verify-2fa-btn" disabled>Verify Code →</button>
+      <div class="auth-hint">Open Google Authenticator or Microsoft Authenticator and enter the code for PULSE.</div>
+      <div class="auth-hint" style="margin-top:8px;"><strong>Demo:</strong> enter <strong>123456</strong> to proceed</div>
+      <div class="auth-link" id="back-to-login">← Back to Sign In</div>
+    </div>
+  </div>
+</div>
+
+<!-- FORGOT PASSWORD -->
+<div class="auth-screen" id="screen-forgot">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-icon"><span>✉</span></div>
+      <div class="auth-title">Reset Password</div>
+      <div class="auth-sub">Enter your email and we'll send a reset code</div>
+    </div>
+    <div class="auth-form" id="forgot-form-step1">
+      <div class="auth-error" id="forgot-error">Email not found. Please use your @jera.co.za address.</div>
+      <div class="auth-success" id="forgot-success">Reset code sent! Check your inbox.</div>
+      <div>
+        <label class="field-label">Email address</label>
+        <input class="field-input" type="email" id="forgot-email" placeholder="yourname@jera.co.za">
+      </div>
+      <button class="btn btn-primary btn-full" id="forgot-send-btn">Send Reset Code →</button>
+      <div class="auth-link" id="back-to-login-2">← Back to Sign In</div>
+    </div>
+    <div class="auth-form hidden" id="forgot-form-step2">
+      <div class="auth-error" id="reset-error">Invalid code or passwords don't match.</div>
+      <div>
+        <label class="field-label">Reset Code</label>
+        <input class="field-input" type="text" id="reset-code" placeholder="Enter 6-digit code" maxlength="6">
+      </div>
+      <div>
+        <label class="field-label">New Password</label>
+        <input class="field-input" type="password" id="reset-pass1" placeholder="New password">
+      </div>
+      <div>
+        <label class="field-label">Confirm Password</label>
+        <input class="field-input" type="password" id="reset-pass2" placeholder="Confirm password">
+      </div>
+      <button class="btn btn-primary btn-full" id="reset-confirm-btn">Reset Password →</button>
+      <div class="auth-hint"><strong>Demo:</strong> use code <strong>999999</strong></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════════
+     APP SHELL
+     ════════════════════════════════════════════════════════════════════════════ -->
+<div id="app-shell">
+  <aside id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon"><span>P</span></div>
+      <div class="brand-text">
+        <span class="brand-name">PULSE</span>
+        <span class="brand-tagline">The heartbeat of your team</span>
+      </div>
+    </div>
+
+    <div class="sidebar-section"><div class="sidebar-section-label">Main</div></div>
+    <nav class="sidebar-nav" id="main-nav">
+      <div class="nav-item active" data-view="dashboard"><span class="nav-icon">◎</span> Dashboard</div>
+      <div class="nav-item" data-view="workflow"><span class="nav-icon">▦</span> Workflow <span class="nav-badge" id="nav-task-count">28</span></div>
+      <div class="nav-item" data-view="sop"><span class="nav-icon">◈</span> SOPs</div>
+      <div class="nav-item" data-view="forms"><span class="nav-icon">📝</span> My Forms <span class="nav-badge" id="forms-badge">5</span></div>
+    </nav>
+
+    <div class="sidebar-section" style="margin-top:12px;"><div class="sidebar-section-label">People</div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-item" data-view="people"><span class="nav-icon">◉</span> Directory</div>
+      <div class="nav-item" data-view="leave"><span class="nav-icon">◐</span> Leave</div>
+      <div class="nav-item" data-view="expenses"><span class="nav-icon">💰</span> Expenses</div>
+    </nav>
+
+    <div class="sidebar-section" style="margin-top:12px;"><div class="sidebar-section-label">Resources</div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-item" data-view="documents"><span class="nav-icon">📂</span> Documents</div>
+    </nav>
+
+    <div class="sidebar-section" style="margin-top:12px;"><div class="sidebar-section-label">Comms</div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-item" data-view="chat"><span class="nav-icon">💬</span> Chat <span class="nav-badge" id="chat-badge">3</span></div>
+      <div class="nav-item" data-view="meeting"><span class="nav-icon">📅</span> Meetings</div>
+    </nav>
+
+    <!-- ADMIN SECTION -->
+    <div class="admin-section" id="admin-nav-section">
+      <div class="sidebar-section" style="margin-top:12px;"><div class="sidebar-section-label">Admin</div></div>
+      <nav class="sidebar-nav">
+        <div class="nav-item" data-view="admin-employees"><span class="nav-icon">👥</span> All Employees</div>
+        <div class="nav-item" data-view="admin-onboard"><span class="nav-icon">➕</span> New Employee</div>
+        <div class="nav-item" data-view="admin-passwords"><span class="nav-icon">🔑</span> Passwords</div>
+        <div class="nav-item" data-view="admin-notify"><span class="nav-icon">📣</span> Notify All</div>
+      </nav>
+    </div>
+
+    <div class="sidebar-employee">
+      <div class="sidebar-user-area">
+        <div class="emp-card-mini">
+          <div class="emp-avatar-mini" id="sidebar-avatar">SV</div>
+          <div class="emp-info-mini">
+            <div class="emp-name-mini" id="sidebar-name">Sarah van der Berg</div>
+            <div class="emp-role-mini" id="sidebar-role">Junior Developer</div>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-logout">
+        <button class="logout-btn" id="logout-btn">Sign Out</button>
+      </div>
+    </div>
+  </aside>
+
+  <main id="content">
+
+    <!-- DASHBOARD -->
+    <div id="view-dashboard" class="view active">
+      <div class="page-header">
+        <div class="page-eyebrow">Dashboard</div>
+        <div class="page-title" id="dash-emp-name">Employee</div>
+        <div class="page-sub" id="dash-emp-sub"></div>
+      </div>
+      <div class="page-body">
+        <div class="stats-row">
+          <div class="stat-card"><div class="stat-value" id="stat-total">28</div><div class="stat-label">Total Tasks</div></div>
+          <div class="stat-card"><div class="stat-value" id="stat-done" style="color:var(--green);">0</div><div class="stat-label">Completed</div></div>
+          <div class="stat-card"><div class="stat-value" id="stat-inprog" style="color:var(--amber);">0</div><div class="stat-label">In Progress</div></div>
+          <div class="stat-card"><div class="stat-value" id="stat-pending" style="color:var(--blue);">28</div><div class="stat-label">Pending</div></div>
+        </div>
+        <div class="card mb-16">
+          <div class="flex items-center justify-between mb-12">
+            <span style="font-size:14px;font-weight:700;">Overall Progress</span>
+            <span style="font-size:28px;font-weight:800;color:var(--red);" id="dash-pct">0%</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" id="dash-prog-fill" style="width:0%;background:linear-gradient(90deg,var(--red),var(--green));"></div></div>
+        </div>
+        <div class="action-grid" id="action-grid"></div>
+        <div class="card" style="border:1px solid var(--border);">
+          <div class="card-label">Team Assignments</div>
+          <div id="team-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WORKFLOW -->
+    <div id="view-workflow" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow">Workflow</div>
+        <div class="page-title" id="wf-emp-name">Employee</div>
+        <div class="page-sub" id="wf-prog-sub"></div>
+      </div>
+      <div class="page-body"><div id="phases-list"></div></div>
+    </div>
+
+    <!-- SOP -->
+    <div id="view-sop" class="view">
+      <div class="page-header">
+        <div class="flex items-center gap-12" style="margin-bottom:8px;">
+          <div class="page-eyebrow" id="sop-eyebrow" style="margin-bottom:0;">Zoho Projects SOP</div>
+          <span class="badge" id="sop-status-badge" style="background:#C4880C18;color:var(--amber);border:1px solid #C4880C40;">In Progress</span>
+        </div>
+        <div class="page-title" id="sop-main-title">📁 Zoho Projects Walkthrough</div>
+        <div class="page-sub" id="sop-main-sub"></div>
+      </div>
+      <div class="page-body" style="max-width:640px;">
+        <div class="sop-subnav" id="sop-subnav">
+          <button class="sop-subnav-btn active" data-sop="projects">📁 Zoho Projects</button>
+          <button class="sop-subnav-btn" data-sop="desk">🎫 Zoho Desk <span id="desk-done-tag" class="hidden" style="color:var(--green);font-size:10px;"> ✓</span></button>
+          <button class="sop-subnav-btn" data-sop="timekeeping">⏱️ Timekeeping <span id="time-done-tag" class="hidden" style="color:var(--green);font-size:10px;"> ✓</span></button>
+        </div>
+        <div class="sop-steps-nav" id="sop-steps-nav"></div>
+        <div class="sop-card" id="sop-card"></div>
+        <div class="sop-nav">
+          <button class="btn btn-ghost" id="sop-prev-btn">← Previous</button>
+          <button class="btn btn-primary" id="sop-next-btn">Next Step →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MY FORMS -->
+    <div id="view-forms" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow">Onboarding</div>
+        <div class="page-title">My Onboarding Forms</div>
+        <div class="page-sub">Complete all required forms to finish your onboarding process</div>
+      </div>
+      <div class="page-body" style="max-width:720px;">
+        <!-- Forms progress -->
+        <div class="card mb-16">
+          <div class="flex items-center justify-between mb-12">
+            <span style="font-size:14px;font-weight:700;">Forms Completion</span>
+            <span style="font-size:24px;font-weight:800;color:var(--red);" id="forms-pct">0%</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" id="forms-prog-fill" style="width:0%;background:linear-gradient(90deg,var(--red),var(--green));"></div></div>
+          <div class="fs-12 mt-8" style="color:var(--text-muted);" id="forms-count">0 of 5 forms completed</div>
+        </div>
+
+        <!-- Form cards list -->
+        <div id="forms-list"></div>
+      </div>
+    </div>
+
+    <!-- FORM: Personal Information -->
+    <div id="view-form-personal" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow">Form 1 of 5</div>
+        <div class="page-title">📋 Personal Information</div>
+        <div class="page-sub">Basic employee details for your HR record</div>
+      </div>
+      <div class="page-body" style="max-width:640px;">
+        <div class="card">
+          <div class="flex flex-col gap-16">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div><label class="field-label">First Name</label><input class="field-input" type="text" id="pf-fname"></div>
+              <div><label class="field-label">Last Name</label><input class="field-input" type="text" id="pf-lname"></div>
+            </div>
+            <div><label class="field-label">ID Number / Passport</label><input class="field-input" type="text" id="pf-id" placeholder="SA ID or passport number"></div>
+            <div><label class="field-label">Date of Birth</label><input class="field-input" type="date" id="pf-dob"></div>
+            <div><label class="field-label">Gender</label>
+              <select class="field-input" id="pf-gender"><option value="">Select…</option><option>Male</option><option>Female</option><option>Non-binary</option><option>Prefer not to say</option></select>
+            </div>
+            <div><label class="field-label">Nationality</label><input class="field-input" type="text" id="pf-nationality" placeholder="e.g. South African"></div>
+            <div><label class="field-label">Home Language</label><input class="field-input" type="text" id="pf-language" placeholder="e.g. English, Afrikaans, Zulu"></div>
+            <div class="divider" style="margin:8px 0;"></div>
+            <div><label class="field-label">Home Address</label><input class="field-input" type="text" id="pf-address" placeholder="Street address"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div><label class="field-label">City / Town</label><input class="field-input" type="text" id="pf-city"></div>
+              <div><label class="field-label">Province</label>
+                <select class="field-input" id="pf-province"><option value="">Select…</option><option>Gauteng</option><option>Western Cape</option><option>KwaZulu-Natal</option><option>Eastern Cape</option><option>Free State</option><option>Limpopo</option><option>Mpumalanga</option><option>North West</option><option>Northern Cape</option></select>
+              </div>
+            </div>
+            <div><label class="field-label">Postal Code</label><input class="field-input" type="text" id="pf-postal" placeholder="e.g. 1459" style="max-width:160px;"></div>
+            <div class="divider" style="margin:8px 0;"></div>
+            <div><label class="field-label">Cell Phone</label><input class="field-input" type="tel" id="pf-cell" placeholder="+27 ..."></div>
+            <div><label class="field-label">Personal Email</label><input class="field-input" type="email" id="pf-email" placeholder="your.email@gmail.com"></div>
+            <div class="flex gap-8" style="margin-top:8px;">
+              <button class="btn btn-ghost" onclick="showView('forms')">← Back</button>
+              <button class="btn btn-primary flex-1" onclick="saveForm('personal')">Save & Continue →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FORM: Emergency Contacts -->
+    <div id="view-form-emergency" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow">Form 2 of 5</div>
+        <div class="page-title">🚨 Emergency Contact Details</div>
+        <div class="page-sub">Vital information in case of workplace emergencies</div>
+      </div>
+      <div class="page-body" style="max-width:640px;">
+        <div class="card mb-16">
+          <div class="card-label">Primary Emergency Contact</div>
+          <div class="flex flex-col gap-16">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div><label class="field-label">Full Name</label><input class="field-input" type="text" id="ec1-name"></div>
+              <div><label class="field-label">Relationship</label>
+                <select class="field-input" id="ec1-rel"><option value="">Select…</option><option>Spouse / Partner</option><option>Parent</option><option>Sibling</option><option>Child</option><option>Other Family</option><option>Friend</option></select>
+              </div>
+            </div>
+            <div><label class="field-label">Address</label><input class="field-input" type="text" id="ec1-address"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div><label class="field-label">Cell Phone</label><input class="field-input" type="tel" id="ec1-cell" placeholder="+27 ..."></div>
+              <div><label class="field-label">Home Phone</label><input class="field-input" type="tel" id="ec1-home" placeholder="Optional"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div><label class="field-label">Work Phone</label><input class="field-input" type="tel" id="ec1-work" placeholder="Optional"></div>
+              <div><label class="field-label">Employer</label><input class="field-input" type="text" id="ec1-employer" placeholder="Optional"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card mb-16">
+          <div class="card-label">Secondary Emergency Contact</div>
+          <div class="flex flex-col gap-16">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div><label class="field-label">Full Name</label><input class="field-input" type="text" id="ec2-name"></div>
+              <div><label class="field-label">Relationship</label>
+                <select class="field-input" id="ec2-rel"><option value="">Select…</option><option>Spouse / Partner</option><option>Parent</option><option>Sibling</option><option>Child</option><option>Other Family</option><option>Friend</option></select>
+              </div>
+            </div>
+            <div><label class="field-label">Address</label><input class="field-input" type="text" id="ec2-address"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div><label class="field-label">Cell Phone</label><input class="field-input" type="tel" id="ec2-cell" placeholder="+27 ..."></div>
+              <div><label class="field-label">Home Phone</label><input class="field-input" type="tel" id="ec2-home" placeholder="Optional"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card mb-16">
+          <div class="card-label">Medical Contact Info</div>
+          <div class="flex flex-col gap-16">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div><label class="field-label">Doctor Name</label><input class="field-input" type="text" id="med-doctor"></div>
+              <div><label class="field-label">Doctor Phone</label><input class="field-input" type="tel" id="med-doctor-phone"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div><label class="field-label">Medical Aid Provider</label><input class="field-input" type="text" id="med-aid" placeholder="e.g. Discovery, Bonitas"></div>
+              <div><label class="field-label">Medical Aid Number</label><input class="field-input" type="text" id="med-aid-num"></div>
+            </div>
+            <div><label class="field-label">Allergies / Medical Conditions</label><textarea class="field-input field-textarea" id="med-allergies" placeholder="List any allergies or conditions we should know about…" style="min-height:60px;"></textarea></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="flex items-center gap-10 mb-16">
+            <input type="checkbox" id="ec-consent" style="width:18px;height:18px;accent-color:var(--red);">
+            <label for="ec-consent" class="fs-13" style="color:var(--text-secondary);">I voluntarily provide this contact information and authorise Jera Consulting (Pty) Ltd to contact the above on my behalf in the event of an emergency.</label>
+          </div>
+          <div class="flex gap-8">
+            <button class="btn btn-ghost" onclick="showView('forms')">← Back</button>
+            <button class="btn btn-primary flex-1" onclick="saveForm('emergency')">Save & Continue →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FORM: Tax & Banking -->
+    <div id="view-form-tax" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow">Form 3 of 5</div>
+        <div class="page-title">🏦 Tax & Banking Details</div>
+        <div class="page-sub">Required for payroll registration — all information is kept confidential</div>
+      </div>
+      <div class="page-body" style="max-width:640px;">
+        <div class="card mb-16">
+          <div class="card-label">Tax Information</div>
+          <div class="flex flex-col gap-16">
+            <div><label class="field-label">Tax Reference Number</label><input class="field-input" type="text" id="tax-ref" placeholder="SARS tax number"></div>
+            <div><label class="field-label">Tax Status</label>
+              <select class="field-input" id="tax-status"><option value="">Select…</option><option>Standard (Code 3601)</option><option>Director (Code 3616)</option><option>Independent Contractor</option></select>
+            </div>
+          </div>
+        </div>
+        <div class="card mb-16">
+          <div class="card-label">Banking Details</div>
+          <div class="flex flex-col gap-16">
+            <div><label class="field-label">Bank Name</label>
+              <select class="field-input" id="bank-name"><option value="">Select…</option><option>ABSA</option><option>Capitec</option><option>FNB (First National Bank)</option><option>Nedbank</option><option>Standard Bank</option><option>Investec</option><option>TymeBank</option><option>African Bank</option><option>Discovery Bank</option><option>Other</option></select>
+            </div>
+            <div><label class="field-label">Account Holder Name</label><input class="field-input" type="text" id="bank-holder" placeholder="Name as it appears on your account"></div>
+            <div><label class="field-label">Account Number</label><input class="field-input" type="text" id="bank-acc"></div>
+            <div><label class="field-label">Branch Code</label><input class="field-input" type="text" id="bank-branch" placeholder="Universal branch code"></div>
+            <div><label class="field-label">Account Type</label>
+              <select class="field-input" id="bank-type"><option value="">Select…</option><option>Cheque / Current</option><option>Savings</option><option>Transmission</option></select>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="flex items-center gap-10 mb-16">
+            <input type="checkbox" id="tax-consent" style="width:18px;height:18px;accent-color:var(--red);">
+            <label for="tax-consent" class="fs-13" style="color:var(--text-secondary);">I confirm that the banking and tax details provided are correct and authorise Jera Consulting (Pty) Ltd to use them for salary payments and statutory deductions.</label>
+          </div>
+          <div class="flex gap-8">
+            <button class="btn btn-ghost" onclick="showView('forms')">← Back</button>
+            <button class="btn btn-primary flex-1" onclick="saveForm('tax')">Save & Continue →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FORM: Company Policies Acknowledgement -->
+    <div id="view-form-policies" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow">Form 4 of 5</div>
+        <div class="page-title">📖 Company Policies & Handbook</div>
+        <div class="page-sub">Read and acknowledge Jera's key policies</div>
+      </div>
+      <div class="page-body" style="max-width:640px;">
+        <div id="policies-list"></div>
+        <div class="card mt-16">
+          <div class="flex items-center gap-10 mb-16">
+            <input type="checkbox" id="policies-consent" style="width:18px;height:18px;accent-color:var(--red);">
+            <label for="policies-consent" class="fs-13" style="color:var(--text-secondary);">I have read and understand all the above policies. I agree to abide by the terms and conditions set forth in the Jera Consulting employee handbook.</label>
+          </div>
+          <div class="flex gap-8">
+            <button class="btn btn-ghost" onclick="showView('forms')">← Back</button>
+            <button class="btn btn-primary flex-1" onclick="saveForm('policies')">Acknowledge & Continue →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FORM: 30-60-90 Day Goals -->
+    <div id="view-form-goals" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow">Form 5 of 5</div>
+        <div class="page-title">🎯 30-60-90 Day Goals</div>
+        <div class="page-sub">Set your onboarding goals with your manager — review these at each check-in</div>
+      </div>
+      <div class="page-body" style="max-width:640px;">
+        <div class="card mb-16" style="border-left:3px solid var(--red);">
+          <div class="card-label">First 30 Days — Learn & Absorb</div>
+          <div class="fs-13 mb-12" style="color:var(--text-muted);">Focus on foundational knowledge, company culture, tools, and processes.</div>
+          <div class="flex flex-col gap-12">
+            <div><label class="field-label">Goal 1</label><input class="field-input" type="text" id="g30-1" placeholder="e.g. Complete all Zoho SOPs and tool onboarding"></div>
+            <div><label class="field-label">Goal 2</label><input class="field-input" type="text" id="g30-2" placeholder="e.g. Understand team structure and project workflows"></div>
+            <div><label class="field-label">Goal 3</label><input class="field-input" type="text" id="g30-3" placeholder="e.g. Shadow senior team member on 2 client calls"></div>
+          </div>
+        </div>
+        <div class="card mb-16" style="border-left:3px solid var(--blue);">
+          <div class="card-label">Days 31–60 — Contribute</div>
+          <div class="fs-13 mb-12" style="color:var(--text-muted);">Start contributing independently. Take on tasks with guidance.</div>
+          <div class="flex flex-col gap-12">
+            <div><label class="field-label">Goal 1</label><input class="field-input" type="text" id="g60-1" placeholder="e.g. Own and deliver first project task independently"></div>
+            <div><label class="field-label">Goal 2</label><input class="field-input" type="text" id="g60-2" placeholder="e.g. Log accurate time daily on Zoho Projects"></div>
+            <div><label class="field-label">Goal 3</label><input class="field-input" type="text" id="g60-3" placeholder="e.g. Build working relationships across departments"></div>
+          </div>
+        </div>
+        <div class="card mb-16" style="border-left:3px solid var(--green);">
+          <div class="card-label">Days 61–90 — Perform</div>
+          <div class="fs-13 mb-12" style="color:var(--text-muted);">Demonstrate competency and ownership. Work with less supervision.</div>
+          <div class="flex flex-col gap-12">
+            <div><label class="field-label">Goal 1</label><input class="field-input" type="text" id="g90-1" placeholder="e.g. Manage a small project or client deliverable end-to-end"></div>
+            <div><label class="field-label">Goal 2</label><input class="field-input" type="text" id="g90-2" placeholder="e.g. Complete probation review with positive outcome"></div>
+            <div><label class="field-label">Goal 3</label><input class="field-input" type="text" id="g90-3" placeholder="e.g. Identify one process improvement and present to team"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="flex gap-8">
+            <button class="btn btn-ghost" onclick="showView('forms')">← Back</button>
+            <button class="btn btn-primary flex-1" onclick="saveForm('goals')">Save Goals & Complete Forms →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PEOPLE -->
+    <div id="view-people" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow">People</div>
+        <div class="page-title">Team Directory</div>
+        <div class="page-sub">Everyone at Jera — roles, contact info, and status</div>
+      </div>
+      <div class="page-body"><div class="people-grid" id="people-grid"></div></div>
+    </div>
+
+    <!-- LEAVE -->
+    <div id="view-leave" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow">Leave</div>
+        <div class="page-title">Leave Management</div>
+        <div class="page-sub">Track annual leave, sick days, and time-off requests</div>
+      </div>
+      <div class="page-body">
+        <div class="leave-stats" id="leave-stats"></div>
+        <div class="card" style="border:1px solid var(--border);overflow:hidden;padding:0;">
+          <div style="padding:20px 24px 0;"><div class="card-label">Leave Requests</div></div>
+          <div style="overflow-x:auto;padding:0 24px 24px;"><table class="leave-table" id="leave-table"></table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXPENSE CLAIMS -->
+    <div id="view-expenses" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow">Finance</div>
+        <div class="page-title">Expense Claim Form</div>
+        <div class="page-sub">Submit travel and expense claims — receipts must be attached. Due by the 25th of each month.</div>
+      </div>
+      <div class="page-body" style="max-width:720px;">
+        <div class="card mb-16" style="background:var(--red-light);border-color:var(--red);border-left:3px solid var(--red);">
+          <div class="fs-13" style="color:var(--red);"><strong>Important:</strong> A copy of your timesheet must accompany this claim. Any client-billable travel not invoiced to the client may NOT be claimed. Claims must be submitted to HR (copy Ryan) by the 25th — late submissions will not be processed.</div>
+        </div>
+        <div class="card mb-16">
+          <div class="card-label">Claimant Details</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div><label class="field-label">Name & Surname</label><input class="field-input" type="text" id="exp-name"></div>
+            <div><label class="field-label">Claim Period</label><input class="field-input" type="month" id="exp-period"></div>
+          </div>
+        </div>
+        <div class="card mb-16">
+          <div class="card-label">Travel Claim</div>
+          <div class="flex flex-col gap-12" id="travel-claims">
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr 80px 1fr;gap:10px;font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:0.5px;">
+              <span>CLIENT / REASON</span><span>DATE</span><span>KM RATE</span><span>KMs</span><span>AMOUNT</span>
+            </div>
+            <div class="expense-row" style="display:grid;grid-template-columns:2fr 1fr 1fr 80px 1fr;gap:10px;">
+              <input class="field-input" placeholder="Client name" style="font-size:12px;padding:8px 10px;">
+              <input class="field-input" type="date" style="font-size:12px;padding:8px 10px;">
+              <select class="field-input" style="font-size:12px;padding:8px 10px;"><option>R4.64/km</option><option>R4.84/km</option><option>Custom</option></select>
+              <input class="field-input" type="number" placeholder="0" style="font-size:12px;padding:8px 10px;">
+              <input class="field-input" placeholder="R 0.00" readonly style="font-size:12px;padding:8px 10px;background:var(--bg);">
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-sm mt-12" onclick="addTravelRow()">+ Add Row</button>
+        </div>
+        <div class="card mb-16">
+          <div class="card-label">Other Expenses (Receipts Required)</div>
+          <div class="flex flex-col gap-12" id="other-expenses">
+            <div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:0.5px;">
+              <span>DATE</span><span>DESCRIPTION / REASON</span><span>AMOUNT (R)</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;">
+              <input class="field-input" type="date" style="font-size:12px;padding:8px 10px;">
+              <input class="field-input" placeholder="e.g. Client lunch, parking, toll fees" style="font-size:12px;padding:8px 10px;">
+              <input class="field-input" type="number" placeholder="0.00" style="font-size:12px;padding:8px 10px;">
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-sm mt-12" onclick="addExpenseRow()">+ Add Row</button>
+        </div>
+        <div class="card">
+          <div class="flex items-center justify-between mb-16">
+            <span class="fw-700">Grand Total Payable</span>
+            <span style="font-size:24px;font-weight:800;color:var(--red);" id="expense-total">R 0.00</span>
+          </div>
+          <button class="btn btn-primary btn-full" onclick="submitExpenseClaim()">📤 Submit Expense Claim</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DOCUMENT LIBRARY -->
+    <div id="view-documents" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow">Resources</div>
+        <div class="page-title">Company Documents</div>
+        <div class="page-sub">Official Jera policies, procedures, job descriptions, and templates</div>
+      </div>
+      <div class="page-body">
+        <div id="doc-library"></div>
+      </div>
+    </div>
+
+    <!-- CHAT & ANNOUNCEMENTS -->
+    <div id="view-chat" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow">Comms</div>
+        <div class="page-title">Chat & Announcements</div>
+        <div class="page-sub">Company updates, team chat, and social posts</div>
+      </div>
+      <div class="page-body">
+        <div class="chat-tabs" id="chat-tabs">
+          <button class="chat-tab active" data-chat="announcements">📣 Announcements</button>
+          <button class="chat-tab" data-chat="general">💬 General Chat</button>
+        </div>
+        <div class="chat-feed" id="chat-feed"></div>
+        <div class="chat-compose" id="chat-compose">
+          <input type="text" id="chat-input" placeholder="Type a message…">
+          <button class="btn btn-primary btn-sm" id="chat-send-btn">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MEETING REQUEST -->
+    <div id="view-meeting" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow">Meetings</div>
+        <div class="page-title">Request a Meeting</div>
+        <div class="page-sub">Schedule time with your manager or a team member</div>
+      </div>
+      <div class="page-body">
+        <div class="meeting-card">
+          <div class="flex flex-col gap-16">
+            <div>
+              <label class="field-label">Meeting with</label>
+              <select class="field-input" id="meeting-with">
+                <option value="">Select a person…</option>
+                <option value="ryan">Ryan de Kock — Managing Director</option>
+                <option value="siko">Siko D — IT Support</option>
+                <option value="raymond">Raymond — IT / Microsoft 365</option>
+                <option value="joann">Jo-Ann — Admin</option>
+                <option value="hr">HR Department</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label">Subject</label>
+              <input class="field-input" type="text" id="meeting-subject" placeholder="e.g. Monthly check-in, Role discussion, Leave query…">
+            </div>
+            <div>
+              <label class="field-label">Preferred Date</label>
+              <input class="field-input" type="date" id="meeting-date">
+            </div>
+            <div>
+              <label class="field-label">Preferred Time Slot</label>
+              <div id="meeting-slots">
+                <div class="meeting-slot" data-time="09:00"><div class="meeting-slot-time">09:00</div><div class="meeting-slot-label">Morning</div></div>
+                <div class="meeting-slot" data-time="11:00"><div class="meeting-slot-time">11:00</div><div class="meeting-slot-label">Late morning</div></div>
+                <div class="meeting-slot" data-time="14:00"><div class="meeting-slot-time">14:00</div><div class="meeting-slot-label">Afternoon</div></div>
+                <div class="meeting-slot" data-time="16:00"><div class="meeting-slot-time">16:00</div><div class="meeting-slot-label">Late afternoon</div></div>
+              </div>
+            </div>
+            <div>
+              <label class="field-label">Notes (optional)</label>
+              <textarea class="field-input field-textarea" id="meeting-notes" placeholder="Any context or agenda items…"></textarea>
+            </div>
+            <button class="btn btn-primary" id="meeting-send-btn">📅 Send Meeting Request</button>
+          </div>
+        </div>
+        <div class="card mt-16" id="meeting-history-card">
+          <div class="card-label">Your Meeting Requests</div>
+          <div id="meeting-history"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ADMIN: ALL EMPLOYEES -->
+    <div id="view-admin-employees" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow" style="color:var(--sidebar-bg);">Admin</div>
+        <div class="page-title">All Employees</div>
+        <div class="page-sub">View and manage every employee in the system</div>
+      </div>
+      <div class="page-body">
+        <div class="card" style="padding:0;overflow:hidden;">
+          <div style="overflow-x:auto;"><table class="admin-table" id="admin-emp-table"></table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ADMIN: NEW EMPLOYEE -->
+    <div id="view-admin-onboard" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow" style="color:var(--sidebar-bg);">Admin</div>
+        <div class="page-title">Onboard New Employee</div>
+        <div class="page-sub">Create a new employee record and kick off onboarding</div>
+      </div>
+      <div class="page-body" style="max-width:560px;">
+        <div class="card">
+          <div class="flex flex-col gap-16">
+            <div><label class="field-label">Full Name</label><input class="field-input" type="text" id="new-emp-name" placeholder="e.g. Thabo Mokoena"></div>
+            <div><label class="field-label">Job Title / Role</label><input class="field-input" type="text" id="new-emp-role" placeholder="e.g. Support Technician"></div>
+            <div><label class="field-label">Email</label><input class="field-input" type="email" id="new-emp-email" placeholder="e.g. thabo@jera.co.za"></div>
+            <div><label class="field-label">Department</label>
+              <select class="field-input" id="new-emp-dept">
+                <option value="">Select…</option>
+                <option>Management</option><option>IT</option><option>Development</option>
+                <option>Admin</option><option>HR</option><option>Support</option>
+              </select>
+            </div>
+            <div><label class="field-label">Start Date</label><input class="field-input" type="date" id="new-emp-start"></div>
+            <div><label class="field-label">Assign Manager</label>
+              <select class="field-input" id="new-emp-manager">
+                <option value="ryan">Ryan de Kock</option>
+              </select>
+            </div>
+            <button class="btn btn-primary btn-full" id="create-emp-btn">🚀 Create Employee & Start Onboarding</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ADMIN: PASSWORDS -->
+    <div id="view-admin-passwords" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow" style="color:var(--sidebar-bg);">Admin</div>
+        <div class="page-title">Password Management</div>
+        <div class="page-sub">Reset passwords and manage 2FA for employees</div>
+      </div>
+      <div class="page-body">
+        <div class="card" style="padding:0;overflow:hidden;">
+          <div style="overflow-x:auto;"><table class="admin-table" id="admin-pw-table"></table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ADMIN: NOTIFY ALL -->
+    <div id="view-admin-notify" class="view">
+      <div class="page-header">
+        <div class="page-eyebrow" style="color:var(--sidebar-bg);">Admin</div>
+        <div class="page-title">Send Company Notification</div>
+        <div class="page-sub">Broadcast a message to all employees</div>
+      </div>
+      <div class="page-body" style="max-width:560px;">
+        <div class="card">
+          <div class="flex flex-col gap-16">
+            <div>
+              <label class="field-label">Notification Type</label>
+              <select class="field-input" id="notify-type">
+                <option value="info">ℹ️ Info</option>
+                <option value="urgent">🚨 Urgent</option>
+                <option value="celebration">🎉 Celebration</option>
+                <option value="reminder">🔔 Reminder</option>
+              </select>
+            </div>
+            <div><label class="field-label">Subject</label><input class="field-input" type="text" id="notify-subject" placeholder="e.g. Office closed on Friday"></div>
+            <div><label class="field-label">Message</label><textarea class="field-input field-textarea" id="notify-message" placeholder="Write your message here…" style="min-height:120px;"></textarea></div>
+            <div>
+              <label class="field-label">Send to</label>
+              <select class="field-input" id="notify-target">
+                <option value="all">Everyone</option>
+                <option value="it">IT Department</option>
+                <option value="admin">Admin</option>
+                <option value="hr">HR</option>
+              </select>
+            </div>
+            <button class="btn btn-primary btn-full" id="send-notify-btn">📣 Send to All Employees</button>
+          </div>
+        </div>
+        <div class="card mt-16">
+          <div class="card-label">Recent Notifications Sent</div>
+          <div id="sent-notifs"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- NOTIFICATION STACK -->
+<div id="notif-stack"></div>
+
+<!-- INTEGRATION MODAL -->
+<div class="modal-overlay hidden" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header" id="modal-header">
+      <div class="modal-eyebrow" id="modal-eyebrow"></div>
+      <div class="modal-title" id="modal-title"></div>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--bg);border-radius:10px;padding:16px;margin-bottom:18px;">
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;letter-spacing:1px;font-weight:700;">TASK DETAILS</div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:8px;" id="modal-task-title"></div>
+        <div class="flex gap-8" style="flex-wrap:wrap;" id="modal-task-badges"></div>
+      </div>
+      <div style="margin-bottom:18px;" id="modal-task-items"></div>
+      <div style="border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:18px;font-size:12px;" id="modal-api-note"></div>
+      <div class="flex gap-8">
+        <button class="btn flex-1" style="justify-content:center;" id="modal-confirm-btn"></button>
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+// ══════════════════════════════════════════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════════════════════════════════════════
+const TEAM = {
+  ryan:    { name:"Ryan de Kock",  role:"Managing Director",  email:"ryan@jera.co.za",    avatar:"RD", color:"#911431", dept:"Management", status:"active", phone:"+27 11 913 3320", twofa:true },
+  siko:    { name:"Siko D",        role:"IT Support",         email:"sikod@jera.co.za",   avatar:"SD", color:"#2b72b9", dept:"IT", status:"active", phone:"+27 11 913 3321", twofa:true },
+  raymond: { name:"Raymond",       role:"IT / Microsoft 365", email:"raymond@jera.co.za", avatar:"RM", color:"#C4880C", dept:"IT", status:"active", phone:"+27 11 913 3322", twofa:false },
+  joann:   { name:"Jo-Ann",        role:"Admin / Clothing",   email:"joann@jera.co.za",   avatar:"JA", color:"#db4fb2", dept:"Admin", status:"active", phone:"+27 11 913 3323", twofa:true },
+  hr:      { name:"HR Department", role:"HR & Compliance",    email:"hr@jera.co.za",      avatar:"HR", color:"#2D8A56", dept:"HR", status:"active", phone:"+27 11 913 3324", twofa:false },
+};
+
+const ADMIN_EMAILS = ["ryan@jera.co.za"];
+
+const PHASES = [
+  { id:"pre", phase:"Pre-Arrival", icon:"📋", days:"Before Day 1", tasks:[
+    { id:"t1", title:"Send welcome letter & arrival info", owner:"hr", priority:"high", system:null, daysOffset:-3 },
+    { id:"t2", title:"Notify IT to prepare equipment", owner:"hr", priority:"high", system:"zoho", daysOffset:-3 },
+    { id:"t3", title:"Collect clothing size from new employee", owner:"joann", priority:"medium", system:null, daysOffset:-2 },
+    { id:"t4", title:"Prepare laptop / workstation", owner:"siko", priority:"high", system:null, daysOffset:-1 },
+    { id:"t5", title:"Source clothing items & get 3 quotes", owner:"joann", priority:"medium", system:null, daysOffset:-1 },
+  ]},
+  { id:"day1", phase:"Day 1 — Welcome", icon:"🎉", days:"Day 1", tasks:[
+    { id:"t6", title:"Welcome & office tour", owner:"ryan", priority:"high", system:null, daysOffset:0 },
+    { id:"t7", title:"Sign employment contract & NDA", owner:"hr", priority:"high", system:null, daysOffset:0 },
+    { id:"t8", title:"Issue access card / PIN", owner:"joann", priority:"high", system:null, daysOffset:0 },
+    { id:"t9", title:"Issue Jera clothing (polo shirts x2)", owner:"joann", priority:"medium", system:null, daysOffset:0 },
+    { id:"t10", title:"Create Jera email address", owner:"siko", priority:"high", system:"microsoft", daysOffset:0 },
+  ]},
+  { id:"it", phase:"IT Setup", icon:"💻", days:"Day 1–2", tasks:[
+    { id:"t11", title:"Configure laptop & install software", owner:"siko", priority:"high", system:"microsoft", daysOffset:1 },
+    { id:"t12", title:"Assign Microsoft 365 licence", owner:"raymond", priority:"high", system:"microsoft", daysOffset:1 },
+    { id:"t13", title:"Setup Outlook, Teams, SharePoint", owner:"raymond", priority:"high", system:"microsoft", daysOffset:1 },
+    { id:"t14", title:"Activate MFA on all accounts", owner:"siko", priority:"high", system:"microsoft", daysOffset:1 },
+    { id:"t15", title:"Assign Zoho One licence (Projects + Desk)", owner:"ryan", priority:"high", system:"zoho", daysOffset:1 },
+    { id:"t16", title:"Create Memtime account", owner:"raymond", priority:"medium", system:"microsoft", daysOffset:1 },
+    { id:"t17", title:"Setup VPN access", owner:"siko", priority:"medium", system:null, daysOffset:1 },
+    { id:"t18", title:"Setup email signature (template from Ryan)", owner:"siko", priority:"medium", system:"microsoft", daysOffset:2 },
+    { id:"t19", title:"Setup Teams background (from Ryan)", owner:"siko", priority:"low", system:"microsoft", daysOffset:2 },
+  ]},
+  { id:"hr", phase:"HR Admin", icon:"📑", days:"Day 2–3", tasks:[
+    { id:"t20", title:"Complete tax & banking detail forms", owner:"hr", priority:"high", system:null, daysOffset:2 },
+    { id:"t21", title:"Register on payroll system", owner:"hr", priority:"high", system:null, daysOffset:2 },
+    { id:"t22", title:"Setup leave management system", owner:"hr", priority:"medium", system:null, daysOffset:2 },
+    { id:"t23", title:"Medical aid & pension registration", owner:"hr", priority:"medium", system:null, daysOffset:3 },
+  ]},
+  { id:"training", phase:"Orientation", icon:"🎓", days:"Week 1–2", tasks:[
+    { id:"t24", title:"1-on-1 with Ryan: role & goals", owner:"ryan", priority:"high", system:null, daysOffset:3 },
+    { id:"t25", title:"Complete Zoho Projects SOP walkthrough", owner:"ryan", priority:"high", system:"zoho", daysOffset:4 },
+    { id:"t26", title:"Complete Zoho Desk SOP walkthrough", owner:"ryan", priority:"high", system:"zoho", daysOffset:4 },
+    { id:"t27", title:"Assign mentor for first 30 days", owner:"ryan", priority:"medium", system:null, daysOffset:5 },
+    { id:"t28", title:"Schedule weekly check-ins (Month 1)", owner:"hr", priority:"medium", system:"zoho", daysOffset:5 },
+  ]},
+];
+
+const ALL_TASKS = PHASES.flatMap(p => p.tasks);
+const TOTAL_TASKS = ALL_TASKS.length;
+
+const SOP_DATA = {
+  projects: [
+    { step:1, icon:"🔐", title:"Log In to Zoho Projects", description:"Access your Zoho Projects account using your Jera company email credentials.", detail:"Go to projects.zoho.com/portal/jeradotcodotza and sign in with your @jera.co.za email.", action:"Open projects.zoho.com", tip:"Bookmark this URL — you'll use it every day." },
+    { step:2, icon:"🗂️", title:"Understand the Dashboard", description:"The dashboard shows your assigned tasks, deadlines and project activity.", detail:"On the left sidebar: My Work, Projects, Timesheets and Reports. Start your day on 'My Work'.", action:"Click 'My Work' in the sidebar", tip:"Use the 'Due Today' filter to focus." },
+    { step:3, icon:"📁", title:"Select Your Project", description:"Navigate to the project(s) you've been assigned to.", detail:"Click 'Projects' → select your project. Inside: Tasks, Milestones, Files, Feed, Timesheets.", action:"Click 'Projects' → select your project", tip:"Ask Ryan which projects are priority." },
+    { step:4, icon:"✅", title:"Update Task Statuses", description:"Keep your task statuses accurate — critical for project visibility.", detail:"Open a task → change status: Open → In Progress → Completed. Add comments.", action:"Open a task → change status → add comment", tip:"Status updates replace status meetings." },
+    { step:5, icon:"⏱️", title:"Log Time Daily", description:"Time logging feeds directly into billing and payroll — non-negotiable.", detail:"Timesheets → Log Time. Select project/task, enter hours, add a note. Sync Memtime daily.", action:"Timesheets → Log Time → enter hours", tip:"Log at end of each day. Never wait until Friday." },
+    { step:6, icon:"💬", title:"Use the Project Feed", description:"The Feed is your team communication channel inside each project.", detail:"Use @mentions. Post updates, flag blockers. Avoid email for project updates.", action:"Open project → 'Feed' → post update", tip:"Tag @ryan on client-facing updates." },
+    { step:7, icon:"📤", title:"Upload Files to SharePoint", description:"All deliverables must be stored in SharePoint — not locally.", detail:"Upload to SharePoint first, then attach link to Zoho task.", action:"Upload to SharePoint → paste link", tip:"Never store docs on local drive only." },
+  ],
+  desk: [
+    { step:1, icon:"🔐", title:"Log In to Zoho Desk", description:"Access Zoho Desk using your Jera credentials.", detail:"Go to desk.zoho.com and sign in. Same Zoho One credentials.", action:"Open desk.zoho.com", tip:"Same login as Zoho Projects." },
+    { step:2, icon:"🎫", title:"Understand the Ticket Dashboard", description:"Dashboard shows open, pending and resolved tickets.", detail:"Left panel: My Tickets, All Tickets, Views, Reports. Start on 'My Tickets'.", action:"Click 'My Tickets'", tip:"Red = urgent, address within 1 hour." },
+    { step:3, icon:"➕", title:"Create a New Ticket", description:"Always log client issues as tickets — never via email.", detail:"Click '+ New Ticket'. Fill: Contact, Subject, Description, Department, Priority, Due Date.", action:"'+ New Ticket' → fill fields → Submit", tip:"Good subject: 'Client — Issue Summary'." },
+    { step:4, icon:"🔄", title:"Update Ticket Status", description:"Keep statuses accurate for team visibility.", detail:"Statuses: Open → In Progress → On Hold → Resolved → Closed.", action:"Open ticket → change status → comment", tip:"Waiting on client? Set 'On Hold'." },
+    { step:5, icon:"↩️", title:"Reply to a Ticket", description:"All client communication inside Zoho Desk.", detail:"Click 'Reply'. Use 'Internal Note' for colleagues.", action:"Open ticket → Reply → Send", tip:"Read full thread before replying." },
+    { step:6, icon:"🚨", title:"Escalate Overdue Tickets", description:"Escalate before SLA breach — don't wait.", detail:"Three-dot menu → Escalate → Select Ryan → Add note.", action:"Escalate → Select Ryan → Add note", tip:"SLA breach = client trust breach." },
+    { step:7, icon:"📝", title:"Use Internal Notes", description:"Internal notes visible only to your team.", detail:"Click 'Internal Note' (not Reply) for internal discussions.", action:"'Internal Note' → type → Save", tip:"Never put opinions in Reply field." },
+    { step:8, icon:"✅", title:"Close & Archive Tickets", description:"Resolve properly — never delete tickets.", detail:"Set 'Resolved', send closing message. Auto-closes after 7 days.", action:"'Resolved' → closing message", tip:"Confirm resolution before closing." },
+  ],
+  timekeeping: [
+    { step:1, icon:"📥", title:"Install Memtime", description:"Download and install Memtime on your work laptop — it runs in the background automatically.", detail:"Memtime auto-tracks which apps, documents, and websites you use throughout the day. It records this locally on your machine — nothing is sent anywhere until you choose to sync.", action:"Download from memtime.com → install → sign in with your Jera email", tip:"Memtime runs silently — you don't need to remember to start or stop it." },
+    { step:2, icon:"📊", title:"Review Your Timeline", description:"At the end of each day, open Memtime and review what it captured.", detail:"Memtime shows a visual timeline of your day — colour-coded by application. You can see exactly when you were in Zoho, Teams, Outlook, VS Code, etc. Use this to accurately recall what you worked on.", action:"Open Memtime → review today's timeline", tip:"Do this at the end of every day while it's still fresh — not Friday afternoon." },
+    { step:3, icon:"✍️", title:"Create Time Entries", description:"Drag on the Memtime timeline to create time entries and assign them to Zoho Projects.", detail:"Select a block of time on the timeline, then assign it to the correct Zoho project and task. Add a brief description of what you did. Memtime syncs these entries directly to Zoho Projects timesheets.", action:"Select time block → assign to project/task → add note → sync", tip:"Be specific in your notes — 'Development work' is too vague. Say what you actually did." },
+    { step:4, icon:"🔄", title:"Sync to Zoho Daily", description:"Sync your Memtime entries to Zoho Projects at the end of every day.", detail:"Click 'Sync' in Memtime to push your time entries to Zoho Projects. Verify they appear correctly in Zoho under Timesheets. This is what gets billed to clients and feeds into payroll.", action:"Memtime → Sync → verify in Zoho Timesheets", tip:"Never leave sync until Friday. You'll forget detail and under-report billable time." },
+    { step:5, icon:"💵", title:"Understand Billable vs Non-Billable", description:"Mark time correctly — billable time gets invoiced to clients.", detail:"Billable: client project work, client meetings, client-requested travel. Non-billable: internal meetings, training, admin, internal projects. If unsure, ask Ryan. Incorrect billing affects invoicing and client relationships.", action:"Tag each entry as billable or non-billable", tip:"When in doubt, ask. Mis-billing is worse than asking a question." },
+    { step:6, icon:"📋", title:"Timesheet Accompanies Expense Claims", description:"A copy of your timesheet must be attached to any expense claim submitted.", detail:"Per Jera policy, no expense claim will be processed without an accompanying timesheet. Any client-billable travel that was done but not invoiced to the client may NOT be claimed. Submit everything by the 25th.", action:"Export timesheet → attach to expense claim", tip:"Download your Zoho timesheet as PDF and attach it. No timesheet = no reimbursement." },
+  ],
+};
+
+const LEAVE_DATA = {
+  balances: { annual: 15, sick: 10, family: 3, used_annual: 4, used_sick: 1, used_family: 0 },
+  requests: [
+    { id:1, person:"ryan", type:"Annual", from:"2026-03-20", to:"2026-03-24", days:3, status:"approved" },
+    { id:2, person:"siko", type:"Sick", from:"2026-03-10", to:"2026-03-10", days:1, status:"approved" },
+    { id:3, person:"joann", type:"Annual", from:"2026-04-01", to:"2026-04-04", days:4, status:"pending" },
+    { id:4, person:"raymond", type:"Family Resp.", from:"2026-03-28", to:"2026-03-28", days:1, status:"pending" },
+    { id:5, person:"hr", type:"Annual", from:"2026-04-14", to:"2026-04-18", days:5, status:"approved" },
+  ],
+};
+
+// Chat data
+let chatData = {
+  announcements: [
+    { id:1, person:"ryan", text:"🏓 Paddle on Friday @ Boksburg Paddle Club! 3pm start. Everyone welcome. Bring your A-game.", time:"2026-03-12 09:15", type:"announcement" },
+    { id:2, person:"hr", text:"📋 Reminder: Monthly timesheets due by 25 March. Please submit via Zoho Projects.", time:"2026-03-11 14:30", type:"announcement" },
+    { id:3, person:"ryan", text:"🎉 Welcome Sarah van der Berg to the team! She joins us as Junior Developer starting 16 March.", time:"2026-03-10 08:00", type:"announcement" },
+  ],
+  general: [
+    { id:4, person:"siko", text:"Anyone else having issues with the VPN this morning?", time:"2026-03-12 08:45", type:"chat" },
+    { id:5, person:"raymond", text:"Working fine on my end. Try disconnecting and reconnecting.", time:"2026-03-12 08:52", type:"chat" },
+    { id:6, person:"joann", text:"New polo shirts arrived! Will distribute this afternoon.", time:"2026-03-12 10:20", type:"chat" },
+  ],
+};
+
+let meetingRequests = [
+  { id:1, with:"ryan", subject:"30-day check-in", date:"2026-03-20", time:"09:00", notes:"Review first month progress", status:"confirmed" },
+];
+
+let sentNotifications = [];
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════════════════════
+let state = {
+  loggedIn: false,
+  loggedInUser: null,
+  isAdmin: false,
+  onboardingStarted: true,
+  employee: { name:"Sarah van der Berg", role:"Junior Developer", email:"sarah@gmail.com", dept:"Development", startDate:"2026-03-16" },
+  taskStates: {},
+  expandedPhase: "pre",
+  sopView: "projects",
+  sopStep: 0,
+  sopCompleted: { projects: false, desk: false, timekeeping: false },
+  currentView: "dashboard",
+  selectedTask: null,
+  chatTab: "announcements",
+  selectedMeetingSlot: null,
+  formsCompleted: {},
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════════════════════════
+function $(id) { return document.getElementById(id); }
+function avatar(key, size=36) {
+  const p = TEAM[key] || { avatar:"?", color:"#999" };
+  return `<div class="avatar" style="width:${size}px;height:${size}px;font-size:${Math.round(size*.35)}px;background:${p.color};color:#fff;box-shadow:0 0 0 2px #fff,0 0 0 3px ${p.color}30;">${p.avatar}</div>`;
+}
+function badge(text, color="var(--red)") {
+  return `<span class="badge" style="background:${color}15;color:${color};border:1px solid ${color}30;">${text}</span>`;
+}
+function systemBadge(system) {
+  if (!system) return "";
+  return system === "zoho" ? badge("Zoho","#E8460A") : badge("M365","#0078D4");
+}
+function prioDot(priority) {
+  const c = { high:"#DB4437", medium:"#C4880C", low:"#2D8A56" }[priority] || "#999";
+  return `<div class="prio-dot" style="background:${c};"></div>`;
+}
+function calcProgress() {
+  const done = Object.values(state.taskStates).filter(s=>s==="done").length;
+  const inprog = Object.values(state.taskStates).filter(s=>s==="inprogress").length;
+  const pending = TOTAL_TASKS - done - inprog;
+  const pct = Math.round((done / TOTAL_TASKS) * 100);
+  return { done, inprog, pending, pct };
+}
+function fmtDate(d) { return new Date(d+"T12:00:00").toLocaleDateString("en-ZA",{day:"numeric",month:"short",year:"numeric"}); }
+function fmtShort(d) { return new Date(d+"T12:00:00").toLocaleDateString("en-ZA",{day:"numeric",month:"short"}); }
+function timeAgo(ts) {
+  const parts = ts.split(" ");
+  return parts[1] || ts;
+}
+
+let notifIdCounter = 0;
+function pushNotif(personKey, message) {
+  const p = TEAM[personKey]; if (!p) return;
+  const id = ++notifIdCounter;
+  const el = document.createElement("div");
+  el.className = "notif-toast"; el.id = "notif-" + id;
+  el.innerHTML = `${avatar(personKey,28)}<div class="notif-body"><div class="notif-name">${p.name}</div><div class="notif-msg">${message}</div></div><button class="notif-close" onclick="dismissNotif(${id})">×</button>`;
+  $("notif-stack").appendChild(el);
+  setTimeout(() => dismissNotif(id), 5000);
+}
+function dismissNotif(id) { const el=$("notif-"+id); if(el) el.remove(); }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// AUTH
+// ══════════════════════════════════════════════════════════════════════════════
+function showAuthScreen(name) {
+  document.querySelectorAll(".auth-screen").forEach(s => s.classList.remove("active"));
+  $("screen-" + name).classList.add("active");
+}
+
+// LOGIN
+$("login-btn").addEventListener("click", doLogin);
+$("login-pass").addEventListener("keydown", e => { if(e.key==="Enter") doLogin(); });
+
+function doLogin() {
+  const email = $("login-email").value.trim();
+  const pass = $("login-pass").value;
+  $("login-error").style.display = "none";
+  if (!email.endsWith("@jera.co.za") || pass.length < 1) {
+    $("login-error").style.display = "block"; return;
+  }
+  state.loggedInUser = email;
+  state.isAdmin = ADMIN_EMAILS.includes(email);
+  showAuthScreen("2fa");
+  setTimeout(() => document.querySelector(".otp-input").focus(), 100);
+}
+
+// 2FA
+const otpInputs = document.querySelectorAll(".otp-input");
+otpInputs.forEach((inp, i) => {
+  inp.addEventListener("input", e => {
+    inp.value = inp.value.replace(/\D/g, "");
+    if (inp.value && i < 5) otpInputs[i+1].focus();
+    inp.classList.toggle("filled", inp.value.length > 0);
+    check2FA();
+  });
+  inp.addEventListener("keydown", e => {
+    if (e.key === "Backspace" && !inp.value && i > 0) { otpInputs[i-1].focus(); otpInputs[i-1].value=""; otpInputs[i-1].classList.remove("filled"); }
+  });
+  inp.addEventListener("paste", e => {
+    e.preventDefault();
+    const data = (e.clipboardData || window.clipboardData).getData("text").replace(/\D/g,"").slice(0,6);
+    data.split("").forEach((ch, j) => { if(otpInputs[j]) { otpInputs[j].value = ch; otpInputs[j].classList.add("filled"); } });
+    if(data.length > 0) otpInputs[Math.min(data.length, 5)].focus();
+    check2FA();
+  });
+});
+
+function check2FA() {
+  const code = Array.from(otpInputs).map(i=>i.value).join("");
+  $("verify-2fa-btn").disabled = code.length < 6;
+}
+
+$("verify-2fa-btn").addEventListener("click", verify2FA);
+function verify2FA() {
+  const code = Array.from(otpInputs).map(i=>i.value).join("");
+  if (code !== "123456") {
+    $("2fa-error").style.display = "block";
+    otpInputs.forEach(i => { i.value=""; i.classList.remove("filled"); });
+    otpInputs[0].focus();
+    return;
+  }
+  $("2fa-error").style.display = "none";
+  state.loggedIn = true;
+  enterApp();
+}
+
+$("back-to-login").addEventListener("click", () => {
+  otpInputs.forEach(i => { i.value=""; i.classList.remove("filled"); });
+  $("2fa-error").style.display = "none";
+  showAuthScreen("login");
+});
+
+// FORGOT PASSWORD
+$("forgot-link").addEventListener("click", () => showAuthScreen("forgot"));
+$("back-to-login-2").addEventListener("click", () => {
+  $("forgot-form-step1").classList.remove("hidden");
+  $("forgot-form-step2").classList.add("hidden");
+  $("forgot-error").style.display = "none";
+  $("forgot-success").style.display = "none";
+  showAuthScreen("login");
+});
+
+$("forgot-send-btn").addEventListener("click", () => {
+  const email = $("forgot-email").value.trim();
+  $("forgot-error").style.display = "none";
+  if (!email.endsWith("@jera.co.za")) { $("forgot-error").style.display = "block"; return; }
+  $("forgot-success").style.display = "block";
+  setTimeout(() => {
+    $("forgot-form-step1").classList.add("hidden");
+    $("forgot-form-step2").classList.remove("hidden");
+  }, 1500);
+});
+
+$("reset-confirm-btn").addEventListener("click", () => {
+  const code = $("reset-code").value.trim();
+  const p1 = $("reset-pass1").value;
+  const p2 = $("reset-pass2").value;
+  $("reset-error").style.display = "none";
+  if (code !== "999999" || p1.length < 1 || p1 !== p2) { $("reset-error").style.display = "block"; return; }
+  // Reset success — go back to login
+  $("forgot-form-step1").classList.remove("hidden");
+  $("forgot-form-step2").classList.add("hidden");
+  $("forgot-success").style.display = "none";
+  showAuthScreen("login");
+  // Show success inline
+  $("login-error").style.display = "none";
+  const msg = document.createElement("div");
+  msg.className = "auth-success"; msg.style.display = "block";
+  msg.textContent = "✅ Password reset successful! Sign in with your new password.";
+  $("login-error").parentNode.insertBefore(msg, $("login-error"));
+  setTimeout(() => msg.remove(), 5000);
+});
+
+// ENTER APP
+function enterApp() {
+  document.querySelectorAll(".auth-screen").forEach(s => s.classList.remove("active"));
+  $("app-shell").classList.add("active");
+
+  // Set sidebar user info
+  if (state.isAdmin) {
+    $("sidebar-avatar").textContent = "RD";
+    $("sidebar-name").textContent = "Ryan de Kock";
+    $("sidebar-role").textContent = "Admin · Managing Director";
+    $("sidebar-avatar").style.background = "#911431";
+    $("admin-nav-section").classList.add("visible");
+  } else {
+    const initials = state.loggedInUser.split("@")[0].split(".").map(s=>s[0]?.toUpperCase()||"").join("") || "U";
+    $("sidebar-avatar").textContent = initials;
+    $("sidebar-name").textContent = state.loggedInUser.split("@")[0].replace("."," ").replace(/\b\w/g,c=>c.toUpperCase());
+    $("sidebar-role").textContent = "Employee";
+  }
+
+  updateNavProgress();
+  showView("dashboard");
+  setTimeout(()=> pushNotif("hr", `Welcome to PULSE! Onboarding is in progress for ${state.employee.name}.`), 600);
+  setTimeout(()=> pushNotif("ryan", `${state.isAdmin ? "Admin access enabled." : "You're logged in."} Have a productive day.`), 1400);
+}
+
+// LOGOUT
+$("logout-btn").addEventListener("click", () => {
+  state.loggedIn = false; state.loggedInUser = null; state.isAdmin = false;
+  $("app-shell").classList.remove("active");
+  $("admin-nav-section").classList.remove("visible");
+  $("login-email").value = ""; $("login-pass").value = "";
+  showAuthScreen("login");
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VIEWS
+// ══════════════════════════════════════════════════════════════════════════════
+function showView(name) {
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  const target = $("view-" + name);
+  if (target) target.classList.add("active");
+  document.querySelectorAll(".nav-item").forEach(btn => {
+    const isFormSub = name.startsWith("form-") && btn.dataset.view === "forms";
+    btn.classList.toggle("active", btn.dataset.view === name || isFormSub);
+  });
+  state.currentView = name;
+  if (name === "dashboard") renderDashboard();
+  if (name === "workflow") renderWorkflow();
+  if (name === "sop") renderSOP();
+  if (name === "forms") renderForms();
+  if (name === "form-policies") renderPolicies();
+  if (name === "expenses") {}
+  if (name === "documents") renderDocLibrary();
+  if (name === "people") renderPeople();
+  if (name === "leave") renderLeave();
+  if (name === "chat") renderChat();
+  if (name === "meeting") renderMeeting();
+  if (name === "admin-employees") renderAdminEmployees();
+  if (name === "admin-onboard") {}
+  if (name === "admin-passwords") renderAdminPasswords();
+  if (name === "admin-notify") renderAdminNotify();
+}
+
+// NAV WIRING
+document.querySelectorAll(".nav-item").forEach(btn => {
+  btn.addEventListener("click", () => showView(btn.dataset.view));
+});
+document.querySelectorAll(".sop-subnav-btn").forEach(btn => {
+  btn.addEventListener("click", () => goSOP(btn.dataset.sop));
+});
+
+function updateNavProgress() {
+  const {done} = calcProgress();
+  $("nav-task-count").textContent = (TOTAL_TASKS - done);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════════════════════════════════════
+function renderDashboard() {
+  const emp = state.employee;
+  const {done, inprog, pending, pct} = calcProgress();
+  $("dash-emp-name").textContent = emp.name;
+  $("dash-emp-sub").textContent = [emp.role, emp.dept, emp.startDate ? "Starts "+fmtDate(emp.startDate) : ""].filter(Boolean).join(" · ");
+  $("dash-pct").textContent = pct + "%";
+  $("dash-prog-fill").style.width = pct + "%";
+  $("stat-total").textContent = TOTAL_TASKS;
+  $("stat-done").textContent = done;
+  $("stat-inprog").textContent = inprog;
+  $("stat-pending").textContent = pending;
+
+  $("action-grid").innerHTML = [
+    { icon:"📋", name:"Workflow", desc:`${TOTAL_TASKS} tasks · 5 phases`, view:"workflow" },
+    { icon:"📝", name:"My Forms", desc:"5 onboarding forms to complete", view:"forms" },
+    { icon:"📁", name:"Zoho Projects SOP", desc:"7-step guide", sop:"projects", sopKey:"projects" },
+    { icon:"🎫", name:"Zoho Desk SOP", desc:"8-step guide", sop:"desk", sopKey:"desk" },
+    { icon:"⏱️", name:"Timekeeping SOP", desc:"6-step Memtime guide", sop:"timekeeping", sopKey:"timekeeping" },
+    { icon:"🔔", name:"Send Reminders", desc:"Ping the team", action:"remind" },
+  ].map(a => `<button class="action-card" onclick="${a.view?`showView('${a.view}')`:a.sop?`goSOP('${a.sop}')`:`sendAllReminders()`}">
+    <div class="action-icon">${a.icon}</div><div class="action-name">${a.name}</div><div class="action-desc">${a.desc}</div>
+    ${a.sopKey && state.sopCompleted[a.sopKey] ? `<div class="completed-tag">✓ COMPLETED</div>` : ""}
+  </button>`).join("");
+
+  $("team-list").innerHTML = Object.entries(TEAM).map(([key, p]) => {
+    const my = ALL_TASKS.filter(t => t.owner === key);
+    const d = my.filter(t => state.taskStates[t.id] === "done").length;
+    const pc = my.length ? Math.round((d/my.length)*100) : 0;
+    return `<div class="team-row">${avatar(key,36)}<div class="team-info"><div class="flex items-center gap-8"><span class="team-name">${p.name}</span><span class="fs-11" style="color:var(--text-muted);">${p.role}</span></div><div class="mini-prog"><div class="mini-prog-track"><div class="mini-prog-fill" style="width:${pc}%;background:${p.color};"></div></div><span class="mini-prog-label">${d}/${my.length}</span></div></div><button class="btn btn-ghost btn-sm" onclick="pingPerson('${key}')">Ping</button></div>`;
+  }).join("");
+}
+function pingPerson(k) { pushNotif(k, `👋 Reminder: Review onboarding tasks for ${state.employee.name}.`); }
+function sendAllReminders() {
+  ["ryan","siko","raymond","joann","hr"].forEach((k,i) => setTimeout(()=>pushNotif(k,`📋 Please check pending tasks for ${state.employee.name}.`), i*500));
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WORKFLOW
+// ══════════════════════════════════════════════════════════════════════════════
+function renderWorkflow() {
+  const {done,pct} = calcProgress();
+  $("wf-emp-name").textContent = state.employee.name;
+  $("wf-prog-sub").textContent = `${done}/${TOTAL_TASKS} tasks complete · ${pct}% done`;
+  $("phases-list").innerHTML = PHASES.map(phase => {
+    const pD = phase.tasks.filter(t=>state.taskStates[t.id]==="done").length;
+    const pP = Math.round((pD/phase.tasks.length)*100);
+    const isO = state.expandedPhase === phase.id;
+    return `<div class="phase-block"><button class="phase-header ${isO?"open":""}" onclick="togglePhase('${phase.id}')"><span class="phase-icon">${phase.icon}</span><div class="phase-info"><div class="phase-name">${phase.phase}</div><div class="phase-sub">${phase.days} · ${pD}/${phase.tasks.length} complete</div></div><div class="phase-right"><div class="phase-mini-bar"><div class="phase-mini-fill" style="width:${pP}%;${pP===100?"background:var(--green);":""}"></div></div><span class="phase-chevron">${isO?"▲":"▼"}</span></div></button>${isO?`<div class="phase-tasks">${phase.tasks.map(t=>renderTaskRow(t)).join("")}</div>`:""}</div>`;
+  }).join("");
+}
+function renderTaskRow(task) {
+  const s = state.taskStates[task.id]||"pending";
+  return `<div class="task-row status-${s}">${prioDot(task.priority)}${avatar(task.owner,28)}<div class="task-meta"><div class="task-title ${s==="done"?"done":""}">${task.title}</div><div class="task-tags"><span class="fs-11" style="color:var(--text-muted);">${TEAM[task.owner]?.name}</span>${systemBadge(task.system)}</div></div><div class="task-actions">${s!=="done"?`<button class="btn btn-ghost btn-sm" onclick="sendTaskReminder('${task.id}')">🔔</button>${task.system?`<button class="btn btn-sm" style="background:${task.system==="zoho"?"#E8460A15":"#0078D415"};color:${task.system==="zoho"?"#E8460A":"#0078D4"};border:1px solid ${task.system==="zoho"?"#E8460A30":"#0078D430"};" onclick="openIntegration('${task.id}')">→ ${task.system==="zoho"?"Zoho":"M365"}</button>`:""}<button class="btn btn-sm" style="background:${s==="inprogress"?"var(--green)":"var(--red)"};color:#fff;" onclick="advanceTask('${task.id}')">${s==="inprogress"?"✓ Done":"Start"}</button>`:badge("✓ Done","var(--green)")}</div></div>`;
+}
+function togglePhase(id) { state.expandedPhase = state.expandedPhase===id?null:id; renderWorkflow(); }
+function advanceTask(id) {
+  const c = state.taskStates[id]||"pending";
+  const n = c==="inprogress"?"done":"inprogress";
+  state.taskStates[id] = n;
+  if(n==="done"){ const t=ALL_TASKS.find(x=>x.id===id); if(t) pushNotif(t.owner,`✅ "${t.title}" marked complete.`); }
+  updateNavProgress(); renderWorkflow();
+  if(state.currentView==="dashboard") renderDashboard();
+}
+function sendTaskReminder(id) { const t=ALL_TASKS.find(x=>x.id===id); if(t) pushNotif(t.owner,`🔔 Reminder: "${t.title}" is pending.`); }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SOP
+// ══════════════════════════════════════════════════════════════════════════════
+function goSOP(k) { state.sopView=k; state.sopStep=0; showView("sop"); }
+function renderSOP() {
+  const data=SOP_DATA[state.sopView]; const step=data[state.sopStep]; const isP=state.sopView==="projects"; const isT=state.sopView==="timekeeping"; const done=state.sopCompleted[state.sopView];
+  $("sop-eyebrow").textContent=isP?"Zoho Projects SOP":isT?"Timekeeping SOP":"Zoho Desk SOP";
+  $("sop-main-title").textContent=isP?"📁 Zoho Projects Walkthrough":isT?"⏱️ Memtime & Timekeeping Walkthrough":"🎫 Zoho Desk Walkthrough";
+  $("sop-main-sub").textContent=`Guide for ${state.employee.name} · ${data.length} steps`;
+  const b=$("sop-status-badge"); if(done){b.textContent="✓ Completed";b.style.cssText="background:#2D8A5618;color:var(--green);border:1px solid #2D8A5640;";}else{b.textContent="In Progress";b.style.cssText="background:#C4880C18;color:var(--amber);border:1px solid #C4880C40;";}
+  document.querySelectorAll(".sop-subnav-btn").forEach(btn=>btn.classList.toggle("active",btn.dataset.sop===state.sopView));
+  $("desk-done-tag").classList.toggle("hidden",!state.sopCompleted.desk);
+  if($("time-done-tag")) $("time-done-tag").classList.toggle("hidden",!state.sopCompleted.timekeeping);
+  $("sop-steps-nav").innerHTML=data.map((_,i)=>`<button class="sop-step-btn ${i<state.sopStep?"past":i===state.sopStep?"current":"future"}" onclick="jumpSopStep(${i})">${i+1}</button>`).join("");
+  $("sop-card").innerHTML=`<div class="sop-card-header"><div class="sop-header-inner"><span class="sop-big-icon">${step.icon}</span><div><div class="sop-eyebrow">Step ${step.step} of ${data.length}</div><div class="sop-card-title">${step.title}</div></div></div><p class="sop-card-desc">${step.description}</p></div><div class="sop-card-body"><div class="sop-detail">${step.detail}</div><div class="sop-hints"><div class="sop-hint action"><span>👉</span><span class="sop-hint-text action">${step.action}</span></div><div class="sop-hint tip"><span>💡</span><span class="sop-hint-text tip">${step.tip}</span></div></div></div>`;
+  const prev=$("sop-prev-btn"),next=$("sop-next-btn");
+  prev.disabled=state.sopStep===0; prev.style.opacity=state.sopStep===0?"0.4":"1";
+  if(state.sopStep<data.length-1){next.textContent="Next Step →";next.className="btn btn-primary";next.onclick=()=>{state.sopStep++;renderSOP();};}
+  else{next.textContent="✓ Complete SOP";next.className="btn";next.style.background="var(--green)";next.style.color="#fff";next.onclick=completeSOP;}
+  prev.onclick=()=>{if(state.sopStep>0){state.sopStep--;renderSOP();}};
+}
+function jumpSopStep(i){state.sopStep=i;renderSOP();}
+function completeSOP(){state.sopCompleted[state.sopView]=true;const names={projects:"Zoho Projects",desk:"Zoho Desk",timekeeping:"Timekeeping"};pushNotif("ryan",`✅ ${state.employee.name} completed the ${names[state.sopView]} SOP.`);showView("dashboard");}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MY FORMS
+// ══════════════════════════════════════════════════════════════════════════════
+const FORMS_LIST = [
+  { id:"personal", icon:"📋", title:"Personal Information", desc:"Name, ID, address, contact details", fields:["pf-fname","pf-lname","pf-id","pf-dob","pf-cell"] },
+  { id:"emergency", icon:"🚨", title:"Emergency Contact Details", desc:"Two emergency contacts + medical info", fields:["ec1-name","ec1-cell","ec-consent"] },
+  { id:"tax", icon:"🏦", title:"Tax & Banking Details", desc:"SARS tax ref, bank account for payroll", fields:["tax-ref","bank-acc","tax-consent"] },
+  { id:"policies", icon:"📖", title:"Company Policies & Handbook", desc:"Read and acknowledge Jera policies", fields:["policies-consent"] },
+  { id:"goals", icon:"🎯", title:"30-60-90 Day Goals", desc:"Set your first 90-day objectives", fields:["g30-1","g60-1","g90-1"] },
+];
+
+const POLICIES = [
+  { id:"contract", title:"Employment Contract", desc:"Your employment agreement with Jera Consulting — notice periods, probation, working hours, leave, remuneration, and disciplinary procedures.", icon:"📄", detail:"Key terms: 6-month probation period. Notice: 1 week (≤6 months), 2 weeks (6–12 months), 4 weeks (1+ year). Working hours flexible between 08:00–17:00 with 60-min lunch. Annual leave: 15 days. Sick leave: 15 days per cycle (med cert after 2 days). Maternity: 4 months (⅓ salary paid). Family responsibility: 3 half-days. Expense claims due by the 25th. Remuneration paid on 25th monthly. Annual review in February." },
+  { id:"nda", title:"Confidentiality & NDA Agreement", desc:"Non-disclosure obligations protecting Jera and client proprietary information.", icon:"🔒", detail:"You may not disclose trade secrets, business processes, client/supplier lists, or any proprietary information. During employment, no competing work without written consent. After leaving, confidentiality continues for 1 year. All documentation is Jera property and must be surrendered on demand. Breach may result in disciplinary action or legal proceedings." },
+  { id:"harassment", title:"Anti-Harassment Policy (SA Law 2022)", desc:"South Africa's Code of Good Practice on eliminating all forms of workplace harassment — including passive-aggressive conduct.", icon:"🛡️", detail:"Effective March 2022 via the Department of Employment and Labour. Covers: physical, psychological, emotional, sexual, gender-based, and racial abuse. Includes indirect actions: sarcasm, condescending eye contact, negative gossip, mimicking, deliberate embarrassment, sabotaging performance, ostracising colleagues, surveillance with harmful intent. Jera has zero tolerance — report to HR or Ryan immediately." },
+  { id:"pto", title:"Leave Policy (BCEA)", desc:"Annual leave (15 days), sick leave (15 days per cycle), family responsibility (3 days), maternity/paternity, study, and religious leave.", icon:"🏖️", detail:"Annual: 15 working days per year. Sick: 15 days per 36-month cycle (med cert after 2 consecutive days). Maternity: 4 months. Family responsibility: 3 half-days (birth, child illness, death of immediate family). Study leave: 1 day before exam + exam day (MD approval). Religious leave: must be applied for, unpaid if no days available. All leave via the leave application form." },
+  { id:"admin", title:"Admin Procedures", desc:"Month-end processes, expense claims, credit card slips, purchase orders, filing, and wages procedures.", icon:"📋", detail:"Month-end: all posting by 1pm on cut-off date. No voiding/crediting after month-end without authorisation. Credit card slips: scan daily with customer name and HC/INV number. Cash: bank before month-end, never hold >R8,000. Expense claims: submit by 25th to HR (copy Ryan). Purchase orders: via Xero, all orders through designated process. Filing: lever arch files by HC number, Delivery/Collection notes on OneDrive." },
+  { id:"timesheets", title:"Timesheets & Invoice Policy", desc:"How to log time in Zoho Projects and Memtime, and how timesheets translate to client invoicing.", icon:"⏱️", detail:"Log time daily in Zoho Projects — never leave it to Friday. Sync Memtime at end of each day. Timesheets feed directly into billing and payroll. Accurate time logging is non-negotiable. A copy of your timesheet must accompany any expense claim." },
+  { id:"bonus", title:"Bonus Savings Scheme", desc:"Voluntary 4% salary savings matched by Jera — paid out in December. Opt-in only.", icon:"💰", detail:"Your savings: 4% of basic salary (after-tax deduction). Company match: additional 4%. Must take full package — no partial. Held in company-managed interest-bearing account. Payout: December pay run. Your portion: tax-free. Company portion: taxed as income. Opt out annually with 30 days' notice. Not a retirement fund — no Section 11F deductions. Consult your own tax advisor." },
+  { id:"conduct", title:"Code of Conduct", desc:"Standards for professional behaviour including communication, client interactions, and company property.", icon:"⚖️", detail:"Professional conduct expected at all times. Dress code: prescribed Jera clothing on-site, business casual in office. Confidentiality of remuneration information required. No competing work without written consent. Safety standards must be followed — refer to Health and Safety Policy. Cash shortages, damages, or loss of equipment treated seriously." },
+  { id:"it", title:"IT & Acceptable Use Policy", desc:"Company devices for work purposes. MFA required. No personal data on work machines. Report incidents to IT.", icon:"💻", detail:"MFA activated on all accounts. Company laptop for work purposes only. All documents on SharePoint — never store locally only. VPN required for remote access. Email signature and Teams background per Ryan's templates. Report any security incidents to Siko immediately." },
+];
+
+const DOC_LIBRARY = [
+  { cat:"Contracts & Policies", docs:[
+    { title:"Employment Contract Template", type:"docx", desc:"Standard Jera employment agreement — terms, conditions, annexures" },
+    { title:"NDA / Partnership Agreement", type:"docx", desc:"Non-disclosure and confidentiality agreement for employees and partners" },
+    { title:"Anti-Harassment Code (SA 2022)", type:"txt", desc:"Department of Employment and Labour gazette — sarcasm, eye-rolling, gossip all included" },
+    { title:"Admin Procedures Manual", type:"pdf", desc:"Month-end, credit cards, cash handling, purchase orders, filing, wages" },
+    { title:"Bonus Savings Scheme", type:"pdf", desc:"Voluntary 4% salary savings matched by Jera — full details and opt-in form" },
+  ]},
+  { cat:"Timesheets & Invoicing", docs:[
+    { title:"Timesheets to Invoice Policy V1", type:"docx", desc:"How Zoho timesheets translate into client invoices" },
+    { title:"Jera Invoice Policy", type:"docx", desc:"Rules and procedures for raising, amending, and crediting invoices" },
+    { title:"Expense Claim Form Template", type:"xls", desc:"Travel and expense reimbursement form with km rates" },
+  ]},
+  { cat:"Job Descriptions", docs:[
+    { title:"Sage X3 Consultant", type:"pdf", desc:"Implementation, configuration, customisation — 3+ years experience, SQL, Crystal Reports" },
+    { title:"Sage 300 People Consultant", type:"pdf", desc:"HR and payroll software implementation — 3+ years, time & attendance modules" },
+    { title:"Sage Software Sales Executive", type:"pdf", desc:"Software sales, CRM, client relationships — proven track record required" },
+  ]},
+  { cat:"SOPs & Procedures", docs:[
+    { title:"Teamwork Desk — Create Ticket SOP", type:"docx", desc:"Step-by-step procedure for creating support tickets on Teamwork Desk" },
+    { title:"Client Onboarding Overview", type:"docx", desc:"From closed sale to project kickoff — handoff, provisioning, kickoff meetings" },
+    { title:"Leave Application Form Template", type:"xlsx", desc:"Annual, sick, maternity, compassionate, study, and religious leave" },
+  ]},
+  { cat:"Employee Forms", docs:[
+    { title:"Employee Profile Questionnaire", type:"docx", desc:"Share your professional background for Jera's LinkedIn and internal comms" },
+  ]},
+];
+
+function renderDocLibrary() {
+  $("doc-library").innerHTML = DOC_LIBRARY.map(cat => `
+    <div class="mb-20">
+      <div class="card-label" style="font-size:13px;margin-bottom:12px;">${cat.cat}</div>
+      ${cat.docs.map(d => {
+        const typeColors = {docx:'var(--blue)',pdf:'var(--red)',xlsx:'var(--green)',xls:'var(--green)',txt:'var(--text-muted)'};
+        const color = typeColors[d.type] || 'var(--text-muted)';
+        return `<div class="card" style="margin-bottom:8px;cursor:pointer;padding:16px 20px;" onclick="viewDocument('${d.title}')">
+          <div class="flex items-center gap-12">
+            <div style="width:40px;height:40px;border-radius:8px;background:${color}12;border:1px solid ${color}25;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <span style="font-size:11px;font-weight:800;color:${color};text-transform:uppercase;">${d.type}</span>
+            </div>
+            <div class="flex-1">
+              <div class="fw-600 fs-13">${d.title}</div>
+              <div class="fs-11 mt-4" style="color:var(--text-muted);">${d.desc}</div>
+            </div>
+            <span class="fs-12" style="color:var(--text-muted);">View →</span>
+          </div>
+        </div>`;
+      }).join("")}
+    </div>`).join("");
+}
+
+function viewDocument(title) {
+  pushNotif("hr", `📂 "${title}" opened. In a production app, this would download or preview the document.`);
+}
+
+// Expense claim functions
+function addTravelRow() {
+  const container = $("travel-claims");
+  const row = document.createElement("div");
+  row.style.cssText = "display:grid;grid-template-columns:2fr 1fr 1fr 80px 1fr;gap:10px;";
+  row.innerHTML = `<input class="field-input" placeholder="Client name" style="font-size:12px;padding:8px 10px;"><input class="field-input" type="date" style="font-size:12px;padding:8px 10px;"><select class="field-input" style="font-size:12px;padding:8px 10px;"><option>R4.64/km</option><option>R4.84/km</option><option>Custom</option></select><input class="field-input" type="number" placeholder="0" style="font-size:12px;padding:8px 10px;"><input class="field-input" placeholder="R 0.00" readonly style="font-size:12px;padding:8px 10px;background:var(--bg);">`;
+  container.appendChild(row);
+}
+
+function addExpenseRow() {
+  const container = $("other-expenses");
+  const row = document.createElement("div");
+  row.style.cssText = "display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;";
+  row.innerHTML = `<input class="field-input" type="date" style="font-size:12px;padding:8px 10px;"><input class="field-input" placeholder="Description" style="font-size:12px;padding:8px 10px;"><input class="field-input" type="number" placeholder="0.00" style="font-size:12px;padding:8px 10px;">`;
+  container.appendChild(row);
+}
+
+function submitExpenseClaim() {
+  pushNotif("hr", `💰 Expense claim submitted by ${state.employee.name}. Awaiting approval from Ryan.`);
+  pushNotif("ryan", `📋 New expense claim received from ${state.employee.name}. Please review.`);
+}
+
+function renderForms() {
+  const completed = Object.keys(state.formsCompleted || {}).filter(k => state.formsCompleted[k]).length;
+  const total = FORMS_LIST.length;
+  const pct = Math.round((completed / total) * 100);
+
+  $("forms-pct").textContent = pct + "%";
+  $("forms-prog-fill").style.width = pct + "%";
+  $("forms-count").textContent = `${completed} of ${total} forms completed`;
+  $("forms-badge").textContent = total - completed;
+
+  $("forms-list").innerHTML = FORMS_LIST.map((f, i) => {
+    const done = state.formsCompleted?.[f.id];
+    return `<div class="card" style="cursor:pointer;border-left:3px solid ${done ? 'var(--green)' : 'var(--border)'};margin-bottom:12px;" onclick="showView('form-${f.id}')">
+      <div class="flex items-center gap-16">
+        <div style="font-size:32px;">${f.icon}</div>
+        <div class="flex-1">
+          <div class="flex items-center gap-8">
+            <span class="fw-700 fs-14">${f.title}</span>
+            ${done ? badge("✓ Complete","var(--green)") : badge("Pending","var(--amber)")}
+          </div>
+          <div class="fs-12 mt-4" style="color:var(--text-muted);">${f.desc}</div>
+        </div>
+        <span style="color:var(--text-muted);font-size:18px;">→</span>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function renderPolicies() {
+  $("policies-list").innerHTML = POLICIES.map(p => `
+    <div class="card mb-12" style="border-left:3px solid var(--blue);">
+      <div class="flex items-center gap-12" style="cursor:pointer;" onclick="this.nextElementSibling.classList.toggle('hidden')">
+        <span style="font-size:28px;">${p.icon}</span>
+        <div class="flex-1">
+          <div class="fw-700 fs-14">${p.title}</div>
+          <div class="fs-12 mt-4" style="color:var(--text-secondary);line-height:1.5;">${p.desc}</div>
+        </div>
+        <span style="color:var(--blue);font-size:12px;font-weight:600;">View ▼</span>
+      </div>
+      <div class="hidden" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-light);">
+        <div class="fs-13" style="color:var(--text-secondary);line-height:1.7;">${p.detail}</div>
+      </div>
+    </div>`).join("");
+}
+
+function saveForm(formId) {
+  if (!state.formsCompleted) state.formsCompleted = {};
+  state.formsCompleted[formId] = true;
+
+  const form = FORMS_LIST.find(f => f.id === formId);
+  pushNotif("hr", `📝 ${state.employee.name} completed: ${form?.title || formId}`);
+
+  const allDone = FORMS_LIST.every(f => state.formsCompleted[f.id]);
+  if (allDone) {
+    pushNotif("ryan", `🎉 ${state.employee.name} has completed ALL onboarding forms!`);
+  }
+
+  showView("forms");
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PEOPLE
+// ══════════════════════════════════════════════════════════════════════════════
+function renderPeople() {
+  const all = [...Object.entries(TEAM).map(([k,p])=>({key:k,...p})), {key:"new",name:state.employee.name,role:state.employee.role,email:state.employee.email||"—",avatar:state.employee.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),color:"#911431",dept:state.employee.dept,status:"onboarding",phone:"—"}];
+  $("people-grid").innerHTML=all.map(p=>{
+    const sc=p.status==="active"?"var(--green)":p.status==="onboarding"?"var(--amber)":"#999";
+    const sl=p.status==="active"?"Active":p.status==="onboarding"?"Onboarding":"Away";
+    return `<div class="person-card"><div class="person-avatar-lg" style="background:${p.color};box-shadow:0 4px 16px ${p.color}30;">${p.avatar}</div><div class="person-name">${p.name}</div><div class="person-role">${p.role}</div><div class="person-meta"><span><span class="person-status-dot" style="background:${sc};"></span> ${sl}</span><span style="color:var(--text-muted);">${p.dept||"—"}</span><span style="color:var(--blue);font-size:11px;">${p.email}</span></div></div>`;
+  }).join("");
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LEAVE
+// ══════════════════════════════════════════════════════════════════════════════
+function renderLeave() {
+  const b=LEAVE_DATA.balances;
+  $("leave-stats").innerHTML=`
+    <div class="leave-stat"><div class="leave-stat-value" style="color:var(--blue);">${b.annual-b.used_annual}</div><div class="leave-stat-label">Annual Leave</div><div class="leave-stat-sub">${b.used_annual} of ${b.annual} used</div></div>
+    <div class="leave-stat"><div class="leave-stat-value" style="color:var(--amber);">${b.sick-b.used_sick}</div><div class="leave-stat-label">Sick Leave</div><div class="leave-stat-sub">${b.used_sick} of ${b.sick} used</div></div>
+    <div class="leave-stat"><div class="leave-stat-value" style="color:var(--green);">${b.family-b.used_family}</div><div class="leave-stat-label">Family Resp.</div><div class="leave-stat-sub">${b.used_family} of ${b.family} used</div></div>`;
+  const rows=LEAVE_DATA.requests.map(r=>{const p=TEAM[r.person];const sb=r.status==="approved"?badge("Approved","var(--green)"):r.status==="pending"?badge("Pending","var(--amber)"):badge("Declined","#DB4437");return `<tr><td><div class="flex items-center gap-8">${avatar(r.person,26)}<span class="fw-600">${p?.name}</span></div></td><td>${r.type}</td><td>${fmtShort(r.from)} – ${fmtShort(r.to)}</td><td style="text-align:center;">${r.days}</td><td>${sb}</td><td>${r.status==="pending"?`<button class="btn btn-sm" style="background:var(--green);color:#fff;padding:3px 10px;" onclick="approveLeave(${r.id})">Approve</button> <button class="btn btn-ghost btn-sm" onclick="declineLeave(${r.id})">Decline</button>`:""}</td></tr>`;}).join("");
+  $("leave-table").innerHTML=`<thead><tr><th>Employee</th><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows}</tbody>`;
+}
+function approveLeave(id){const r=LEAVE_DATA.requests.find(x=>x.id===id);if(r){r.status="approved";pushNotif(r.person,`✅ Leave approved (${r.type}, ${r.days}d).`);renderLeave();}}
+function declineLeave(id){const r=LEAVE_DATA.requests.find(x=>x.id===id);if(r){r.status="declined";pushNotif(r.person,`❌ Leave declined (${r.type}).`);renderLeave();}}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CHAT & ANNOUNCEMENTS
+// ══════════════════════════════════════════════════════════════════════════════
+function renderChat() {
+  document.querySelectorAll(".chat-tab").forEach(t=>t.classList.toggle("active",t.dataset.chat===state.chatTab));
+  const msgs = chatData[state.chatTab] || [];
+  $("chat-feed").innerHTML = msgs.length ? msgs.map(m=>{
+    const p=TEAM[m.person]||{name:"You",avatar:"ME",color:"#999"};
+    const isAnn = m.type === "announcement";
+    return `<div class="chat-msg ${isAnn?"announcement":""}"><div>${avatar(m.person,34)}</div><div class="chat-msg-body"><div class="chat-msg-header"><span class="chat-msg-name">${p.name}</span>${isAnn?`<span class="chat-msg-tag">ANNOUNCEMENT</span>`:""}<span class="chat-msg-time">${timeAgo(m.time)}</span></div><div class="chat-msg-text">${m.text}</div></div></div>`;
+  }).join("") : `<div style="text-align:center;padding:40px;color:var(--text-muted);">No messages yet. Start the conversation!</div>`;
+
+  $("chat-input").placeholder = state.chatTab === "announcements" ? (state.isAdmin ? "Post an announcement…" : "Only admins can post announcements") : "Type a message…";
+  $("chat-input").disabled = state.chatTab === "announcements" && !state.isAdmin;
+}
+
+document.querySelectorAll(".chat-tab").forEach(t=>{
+  t.addEventListener("click",()=>{state.chatTab=t.dataset.chat;renderChat();});
+});
+
+$("chat-send-btn").addEventListener("click", sendChatMsg);
+$("chat-input").addEventListener("keydown", e=>{ if(e.key==="Enter") sendChatMsg(); });
+
+function sendChatMsg() {
+  const text = $("chat-input").value.trim(); if(!text) return;
+  const msg = { id: Date.now(), person: state.isAdmin?"ryan":"siko", text, time: new Date().toISOString().slice(0,16).replace("T"," "), type: state.chatTab==="announcements"?"announcement":"chat" };
+  chatData[state.chatTab].unshift(msg);
+  $("chat-input").value = "";
+  renderChat();
+  $("chat-badge").textContent = parseInt($("chat-badge").textContent)+1;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MEETINGS
+// ══════════════════════════════════════════════════════════════════════════════
+function renderMeeting() {
+  document.querySelectorAll(".meeting-slot").forEach(s=>{
+    s.classList.toggle("selected",s.dataset.time===state.selectedMeetingSlot);
+    s.onclick = () => { state.selectedMeetingSlot=s.dataset.time; renderMeeting(); };
+  });
+  $("meeting-history").innerHTML = meetingRequests.length ? meetingRequests.map(m=>{
+    const p=TEAM[m.with]; const sb=m.status==="confirmed"?badge("Confirmed","var(--green)"):badge("Pending","var(--amber)");
+    return `<div class="flex items-center gap-12" style="padding:10px 0;border-bottom:1px solid var(--border-light);">${avatar(m.with,32)}<div class="flex-1"><div class="fw-600 fs-13">${m.subject}</div><div class="fs-12" style="color:var(--text-muted);">With ${p?.name} · ${fmtDate(m.date)} at ${m.time}</div></div>${sb}</div>`;
+  }).join("") : `<div style="color:var(--text-muted);font-size:13px;padding:8px 0;">No meeting requests yet.</div>`;
+}
+
+$("meeting-send-btn").addEventListener("click", () => {
+  const who=$("meeting-with").value, subj=$("meeting-subject").value.trim(), date=$("meeting-date").value, time=state.selectedMeetingSlot, notes=$("meeting-notes").value.trim();
+  if(!who||!subj||!date||!time) return;
+  meetingRequests.push({id:Date.now(),with:who,subject:subj,date,time,notes,status:"pending"});
+  pushNotif(who,`📅 Meeting request: "${subj}" on ${fmtDate(date)} at ${time}.`);
+  $("meeting-subject").value=""; $("meeting-notes").value=""; state.selectedMeetingSlot=null;
+  renderMeeting();
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADMIN: ALL EMPLOYEES
+// ══════════════════════════════════════════════════════════════════════════════
+function renderAdminEmployees() {
+  const all = [...Object.entries(TEAM).map(([k,p])=>({key:k,...p})), {key:"new",name:state.employee.name,role:state.employee.role,email:state.employee.email||"—",avatar:state.employee.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),color:"#911431",dept:state.employee.dept,status:"onboarding",phone:"TBC"}];
+  const rows = all.map(p=>{
+    const sc=p.status==="active"?"var(--green)":p.status==="onboarding"?"var(--amber)":"#999";
+    const sl=p.status==="active"?badge("Active","var(--green)"):p.status==="onboarding"?badge("Onboarding","var(--amber)"):badge("Away","#999");
+    return `<tr><td><div class="flex items-center gap-10">${avatar(p.key,30)}<div><div class="fw-600">${p.name}</div><div class="fs-11" style="color:var(--text-muted);">${p.email}</div></div></div></td><td>${p.role}</td><td>${p.dept||"—"}</td><td>${sl}</td><td>${p.phone||"—"}</td><td><button class="btn btn-ghost btn-sm" onclick="pushNotif('${p.key}','📣 Admin notification sent.')">Notify</button></td></tr>`;
+  }).join("");
+  $("admin-emp-table").innerHTML=`<thead><tr><th>Employee</th><th>Role</th><th>Department</th><th>Status</th><th>Phone</th><th>Actions</th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADMIN: CREATE EMPLOYEE
+// ══════════════════════════════════════════════════════════════════════════════
+$("create-emp-btn").addEventListener("click", () => {
+  const name=$("new-emp-name").value.trim(), role=$("new-emp-role").value.trim(), email=$("new-emp-email").value.trim(), dept=$("new-emp-dept").value, start=$("new-emp-start").value;
+  if(!name||!role||!email||!dept||!start) return;
+  const initials = name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+  TEAM["emp_"+Date.now()] = { name, role, email, avatar:initials, color:"#2b72b9", dept, status:"onboarding", phone:"TBC", twofa:false };
+  pushNotif("hr",`🚀 New employee created: ${name} (${role}). Onboarding initiated.`);
+  pushNotif("siko",`💻 IT setup tasks assigned for new employee: ${name}.`);
+  // Clear form
+  $("new-emp-name").value=""; $("new-emp-role").value=""; $("new-emp-email").value=""; $("new-emp-dept").value=""; $("new-emp-start").value="";
+  showView("admin-employees");
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADMIN: PASSWORDS
+// ══════════════════════════════════════════════════════════════════════════════
+function renderAdminPasswords() {
+  const all = Object.entries(TEAM).map(([k,p])=>({key:k,...p}));
+  const rows = all.map(p=>{
+    const tfa = p.twofa ? badge("✓ Enabled","var(--green)") : badge("✗ Disabled","#DB4437");
+    return `<tr><td><div class="flex items-center gap-10">${avatar(p.key,30)}<div><div class="fw-600">${p.name}</div><div class="fs-11" style="color:var(--text-muted);">${p.email}</div></div></div></td><td>${tfa}</td><td><div class="flex gap-6"><button class="btn btn-ghost btn-sm" onclick="resetUserPassword('${p.key}')">Reset Password</button><button class="btn btn-sm" style="background:${p.twofa?'#DB443715':'var(--green)15'};color:${p.twofa?'#DB4437':'var(--green)'};border:1px solid ${p.twofa?'#DB443730':'var(--green)30'};" onclick="toggle2FA('${p.key}')">${p.twofa?'Disable 2FA':'Enable 2FA'}</button></div></td></tr>`;
+  }).join("");
+  $("admin-pw-table").innerHTML=`<thead><tr><th>Employee</th><th>2FA Status</th><th>Actions</th></tr></thead><tbody>${rows}</tbody>`;
+}
+function resetUserPassword(key) {
+  const p=TEAM[key]; if(!p) return;
+  pushNotif(key,`🔑 Password has been reset. A temporary password has been sent to ${p.email}.`);
+}
+function toggle2FA(key) {
+  const p=TEAM[key]; if(!p) return;
+  p.twofa = !p.twofa;
+  pushNotif(key,`🔐 2FA has been ${p.twofa?"enabled":"disabled"} for ${p.name}.`);
+  renderAdminPasswords();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADMIN: NOTIFY ALL
+// ══════════════════════════════════════════════════════════════════════════════
+function renderAdminNotify() {
+  $("sent-notifs").innerHTML = sentNotifications.length ? sentNotifications.map(n => `
+    <div style="padding:10px 0;border-bottom:1px solid var(--border-light);">
+      <div class="flex items-center gap-8 mb-4"><span>${{info:"ℹ️",urgent:"🚨",celebration:"🎉",reminder:"🔔"}[n.type]}</span><span class="fw-700 fs-13">${n.subject}</span><span class="fs-11" style="color:var(--text-muted);">→ ${n.target}</span></div>
+      <div class="fs-12" style="color:var(--text-secondary);">${n.message}</div>
+    </div>`).join("") : `<div style="color:var(--text-muted);font-size:13px;">No notifications sent yet.</div>`;
+}
+
+$("send-notify-btn").addEventListener("click", () => {
+  const type=$("notify-type").value, subject=$("notify-subject").value.trim(), message=$("notify-message").value.trim(), target=$("notify-target").value;
+  if(!subject||!message) return;
+  sentNotifications.unshift({type, subject, message, target, time: new Date().toISOString()});
+  // Send notif to everyone
+  Object.keys(TEAM).forEach((k,i) => setTimeout(()=>pushNotif(k,`📣 ${subject}: ${message.slice(0,60)}…`), i*300));
+  $("notify-subject").value=""; $("notify-message").value="";
+  renderAdminNotify();
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INTEGRATION MODAL
+// ══════════════════════════════════════════════════════════════════════════════
+function openIntegration(taskId) {
+  const task=ALL_TASKS.find(t=>t.id===taskId); if(!task) return;
+  const isZ=task.system==="zoho", acc=isZ?"#E8460A":"#0078D4", own=TEAM[task.owner];
+  $("modal-overlay").classList.remove("hidden");
+  $("modal-header").style.background=acc;
+  $("modal-eyebrow").textContent=isZ?"Zoho Projects Integration":"Microsoft 365 Integration";
+  $("modal-title").textContent="Create Task / Ticket";
+  $("modal-task-title").textContent=task.title;
+  $("modal-task-badges").innerHTML=`${badge("Assigned: "+own?.name,own?.color)} ${badge(task.priority,task.priority==="high"?"#DB4437":"#C4880C")}`;
+  const items=isZ?["Project: Jera Onboarding",`Task: ${task.title}`,`Assignee: ${own?.name}`,`Priority: ${task.priority}`]:["Planner board: IT Onboarding",`Task: ${task.title}`,`Assigned to: ${own?.name}`,`Teams notification sent`];
+  $("modal-task-items").innerHTML=`<div style="font-size:13px;font-weight:700;margin-bottom:10px;">This will create in ${isZ?"Zoho Projects":"Microsoft 365"}:</div>${items.map(i=>`<div class="flex items-center gap-8" style="margin-bottom:8px;"><span style="color:${acc};font-weight:700;">▸</span><span class="fs-13" style="color:var(--text-secondary);">${i}</span></div>`).join("")}`;
+  $("modal-api-note").style.cssText=`background:${acc}08;border:1px solid ${acc}30;color:${acc};font-size:12px;border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:18px;`;
+  $("modal-api-note").textContent=`⚡ Connect your ${isZ?"Zoho API key":"M365 tenant"} in Settings to enable live creation.`;
+  const cb=$("modal-confirm-btn"); cb.textContent=isZ?"Create in Zoho":"Create in M365"; cb.style.background=acc; cb.style.color="#fff";
+  cb.onclick=()=>{pushNotif(task.owner,`📌 Task created in ${isZ?"Zoho Projects":"Microsoft Planner"}: "$

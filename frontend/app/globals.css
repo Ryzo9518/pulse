@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --red: #911431;
+  --red-light: #F5E8EB;
+  --red-glow: #91143120;
+  --blue: #2b72b9;
+  --blue-light: #EBF3FB;
+  --pink: #db4fb2;
+  --green: #2D8A56;
+  --amber: #C4880C;
+  --bg: #FAF9F7;
+  --card: #FFFFFF;
+  --border: #E8E4DF;
+  --border-light: #F0ECE8;
+  --text: #1a1a1a;
+  --text-muted: #8C857D;
+  --text-secondary: #6B645C;
+  --sidebar-bg: #1a1a1a;
+}
+
+body {
+  font-family: 'Outfit', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #ddd; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #bbb; }
+
+/* Animations */
+@keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+@keyframes slideIn { from { opacity:0; transform:translateX(16px); } to { opacity:1; transform:translateX(0); } }
+@keyframes notifIn { from { opacity:0; transform:translateX(24px) scale(.95); } to { opacity:1; transform:translateX(0) scale(1); } }
+@keyframes shake { 0%,100%{transform:translateX(0);}25%{transform:translateX(-6px);}75%{transform:translateX(6px);} }
+
+.animate-fade-up { animation: fadeUp .35s ease both; }
+.animate-slide-in { animation: slideIn .3s ease both; }
+.animate-notif-in { animation: notifIn .3s ease; }
+.animate-shake { animation: shake .3s ease; }
