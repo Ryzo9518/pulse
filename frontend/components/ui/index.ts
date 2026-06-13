@@ -3,6 +3,9 @@
 export { StatCard } from './StatCard'
 export type { StatCardProps, StatAccent } from './StatCard'
 
+export { StatCardGrid } from './StatCardGrid'
+export type { StatCardGridProps } from './StatCardGrid'
+
 export { ActionCard } from './ActionCard'
 export type { ActionCardProps } from './ActionCard'
 
@@ -31,7 +34,7 @@ export { Modal } from './Modal'
 export type { ModalProps, ModalMaxWidth } from './Modal'
 
 export { ToastProvider, useToast } from './Toast'
-export type { ToastProviderProps, ToastOptions } from './Toast'
+export type { ToastProviderProps, ToastOptions, ToastVariant } from './Toast'
 
 export { DataTable } from './DataTable'
 export type { DataTableProps, DataTableColumn, DataTableHeaderTone } from './DataTable'

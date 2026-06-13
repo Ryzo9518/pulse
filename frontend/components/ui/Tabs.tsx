@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 export interface TabItem {
   /** Unique tab id. */
@@ -42,10 +42,46 @@ export function Tabs({
 }: TabsProps) {
   const [internal, setInternal] = useState<string>(defaultValue ?? tabs[0]?.value ?? '')
   const active = value ?? internal
+  const baseId = useId()
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
+
+  const tabId = (val: string) => `${baseId}-tab-${val}`
+  const panelId = (val: string) => `${baseId}-panel-${val}`
 
   const select = (next: string) => {
     if (value === undefined) setInternal(next)
     onChange?.(next)
+  }
+
+  const focusTabAt = (index: number) => {
+    const tab = tabs[index]
+    if (!tab) return
+    select(tab.value)
+    tabRefs.current[index]?.focus()
+  }
+
+  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const last = tabs.length - 1
+    switch (e.key) {
+      case 'ArrowRight':
+        e.preventDefault()
+        focusTabAt(index >= last ? 0 : index + 1)
+        break
+      case 'ArrowLeft':
+        e.preventDefault()
+        focusTabAt(index <= 0 ? last : index - 1)
+        break
+      case 'Home':
+        e.preventDefault()
+        focusTabAt(0)
+        break
+      case 'End':
+        e.preventDefault()
+        focusTabAt(last)
+        break
+      default:
+        break
+    }
   }
 
   const activeTab = tabs.find((t) => t.value === active)
@@ -59,17 +95,28 @@ export function Tabs({
             : 'flex flex-wrap gap-[6px]'
         }
         role="tablist"
+        aria-orientation="horizontal"
       >
-        {tabs.map((tab) => {
+        {tabs.map((tab, index) => {
           const isActive = tab.value === active
+          const common = {
+            id: tabId(tab.value),
+            type: 'button' as const,
+            role: 'tab' as const,
+            'aria-selected': isActive,
+            'aria-controls': panelId(tab.value),
+            tabIndex: isActive ? 0 : -1,
+            ref: (el: HTMLButtonElement | null) => {
+              tabRefs.current[index] = el
+            },
+            onClick: () => select(tab.value),
+            onKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => onKeyDown(e, index),
+          }
           if (variant === 'underline') {
             return (
               <button
                 key={tab.value}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => select(tab.value)}
+                {...common}
                 className={`-mb-px border-b-2 px-1 pb-3 text-[13px] font-semibold transition-colors ${
                   isActive
                     ? 'border-jera-red text-jera-red'
@@ -83,10 +130,7 @@ export function Tabs({
           return (
             <button
               key={tab.value}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => select(tab.value)}
+              {...common}
               className={`rounded-btn border px-[18px] py-2 font-display text-[13px] font-semibold transition-all duration-150 ${
                 isActive
                   ? 'border-jera-red bg-jera-red text-white'
@@ -99,7 +143,13 @@ export function Tabs({
         })}
       </div>
       {renderPanel && activeTab?.content ? (
-        <div role="tabpanel" className="mt-5">
+        <div
+          role="tabpanel"
+          id={panelId(activeTab.value)}
+          aria-labelledby={tabId(activeTab.value)}
+          tabIndex={0}
+          className="mt-5"
+        >
           {activeTab.content}
         </div>
       ) : null}

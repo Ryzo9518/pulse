@@ -130,13 +130,13 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex h-screen w-[260px] flex-shrink-0 flex-col overflow-y-auto bg-surface-sidebar">
+    <aside className="flex h-screen w-[260px] flex-shrink-0 flex-col overflow-y-auto bg-surface-sidebar max-[700px]:w-[64px]">
       {/* Brand */}
-      <div className="flex items-center gap-3 border-b border-white/[0.04] px-[22px] pb-5 pt-6">
-        <div className="flex h-[38px] w-[38px] items-center justify-center rounded-[10px] bg-jera-red shadow-red-glow">
+      <div className="flex items-center gap-3 border-b border-white/[0.04] px-[22px] pb-5 pt-6 max-[700px]:justify-center max-[700px]:px-0">
+        <div className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-[10px] bg-jera-red shadow-red-glow">
           <span className="font-display text-lg font-black text-white">P</span>
         </div>
-        <div className="flex flex-col">
+        <div className="flex flex-col max-[700px]:hidden">
           <span className="font-display text-[17px] font-extrabold tracking-[2px] text-white">
             PULSE
           </span>
@@ -150,7 +150,7 @@ export function Sidebar() {
       <div className="flex flex-col pt-3">
         {sections.map((section) => (
           <div key={section.label}>
-            <div className="px-3 pb-1 pt-4">
+            <div className="px-3 pb-1 pt-4 max-[700px]:hidden">
               <div className="px-[10px] text-[10px] font-bold uppercase tracking-[2px] text-white/25">
                 {section.label}
               </div>
@@ -162,20 +162,21 @@ export function Sidebar() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    title={item.label}
                     aria-current={active ? 'page' : undefined}
-                    className={`flex items-center gap-[10px] rounded-btn border border-transparent px-3 py-[9px] text-[13.5px] transition-all duration-150 ${
+                    className={`flex items-center gap-[10px] rounded-btn border border-transparent px-3 py-[9px] text-[13.5px] transition-all duration-150 max-[700px]:justify-center max-[700px]:px-0 ${
                       active
-                        ? 'bg-jera-red font-semibold text-white shadow-[0_2px_12px_#91143150]'
-                        : 'font-medium text-white/70 hover:bg-surface-sidebar-hover hover:text-white/70'
+                        ? 'bg-jera-red font-semibold text-white shadow-red-glow'
+                        : 'font-medium text-white/70 hover:bg-surface-sidebar-hover hover:text-white'
                     }`}
                   >
                     <span className="w-[22px] flex-shrink-0 text-center text-base">
                       {item.icon}
                     </span>
-                    <span>{item.label}</span>
+                    <span className="max-[700px]:hidden">{item.label}</span>
                     {item.badge ? (
                       <span
-                        className={`ml-auto rounded-[4px] px-[7px] py-px text-[11px] font-semibold ${
+                        className={`ml-auto rounded-[4px] px-[7px] py-px text-[11px] font-semibold max-[700px]:hidden ${
                           active
                             ? 'bg-white/25 text-white'
                             : 'bg-white/[0.08] text-white/60'
@@ -194,15 +195,15 @@ export function Sidebar() {
 
       {/* Bottom user card + sign out */}
       <div className="mt-auto border-t border-white/[0.04]">
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-[10px] rounded-[10px] bg-white/[0.03] p-3">
+        <div className="px-4 py-3 max-[700px]:px-2">
+          <div className="flex items-center gap-[10px] rounded-[10px] bg-white/[0.03] p-3 max-[700px]:justify-center max-[700px]:p-2">
             <Avatar
               name={currentEmployee?.display_name}
               initials={currentEmployee?.avatar_initials}
               color={currentEmployee?.avatar_color}
               size="sm"
             />
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 max-[700px]:hidden">
               <div className="truncate text-[13px] font-semibold text-white">
                 {currentEmployee?.display_name ?? 'Signed out'}
               </div>
@@ -212,13 +213,17 @@ export function Sidebar() {
             </div>
           </div>
         </div>
-        <div className="flex px-4 pb-[14px] pt-2">
+        <div className="flex px-4 pb-[14px] pt-2 max-[700px]:px-2">
           <button
             type="button"
             onClick={handleSignOut}
+            title="Sign Out"
             className="w-full rounded-btn border border-white/10 bg-white/[0.03] px-2 py-2 text-center font-display text-xs font-semibold text-white/50 transition-all duration-150 hover:border-white/20 hover:bg-white/[0.08] hover:text-white/70"
           >
-            Sign Out
+            <span className="max-[700px]:hidden">Sign Out</span>
+            <span className="hidden max-[700px]:inline" aria-hidden="true">
+              ⏻
+            </span>
           </button>
         </div>
       </div>

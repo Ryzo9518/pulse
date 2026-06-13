@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 
 export interface ActionCardProps {
@@ -33,6 +34,16 @@ function Inner({ icon, title, description }: Pick<ActionCardProps, 'icon' | 'tit
  */
 export function ActionCard({ icon, title, description, onClick, href, className = '' }: ActionCardProps) {
   if (href) {
+    // Internal paths use next/link for client-side nav (a raw <a> full-reloads and
+    // wipes the in-memory mock session). External/protocol hrefs stay raw <a>.
+    const isInternal = href.startsWith('/')
+    if (isInternal) {
+      return (
+        <Link href={href} onClick={onClick} className={`${BASE} ${className}`}>
+          <Inner icon={icon} title={title} description={description} />
+        </Link>
+      )
+    }
     return (
       <a href={href} onClick={onClick} className={`${BASE} ${className}`}>
         <Inner icon={icon} title={title} description={description} />

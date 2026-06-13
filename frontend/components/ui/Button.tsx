@@ -24,6 +24,10 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: ButtonSize
   /** Icon rendered before the label. */
   leftIcon?: ReactNode
+  /** Icon rendered after the label. */
+  rightIcon?: ReactNode
+  /** When true, disables the button and shows a leading spinner. */
+  isLoading?: boolean
   /** Stretch to full width and centre content. */
   fullWidth?: boolean
   children?: ReactNode
@@ -36,6 +40,8 @@ export function Button({
   variant = 'primary',
   size = 'md',
   leftIcon,
+  rightIcon,
+  isLoading = false,
   fullWidth = false,
   className = '',
   disabled,
@@ -46,12 +52,21 @@ export function Button({
   return (
     <button
       type={type}
-      disabled={disabled}
+      disabled={disabled || isLoading}
+      aria-busy={isLoading || undefined}
       className={`inline-flex items-center gap-[7px] font-display font-semibold transition-all duration-200 disabled:cursor-not-allowed ${SIZE_CLASSES[size]} ${VARIANT_CLASSES[variant]} ${fullWidth ? 'w-full justify-center' : ''} ${className}`}
       {...rest}
     >
-      {leftIcon ? <span className="inline-flex items-center">{leftIcon}</span> : null}
+      {isLoading ? (
+        <span
+          className="inline-block h-[14px] w-[14px] animate-spin rounded-full border-2 border-current border-r-transparent"
+          aria-hidden
+        />
+      ) : leftIcon ? (
+        <span className="inline-flex items-center">{leftIcon}</span>
+      ) : null}
       {children}
+      {rightIcon ? <span className="inline-flex items-center">{rightIcon}</span> : null}
     </button>
   )
 }

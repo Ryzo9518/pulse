@@ -1,6 +1,9 @@
 'use client'
 
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useId, useRef, type ReactNode } from 'react'
+
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 export type ModalMaxWidth = 'sm' | 'md' | 'lg'
 
@@ -41,13 +44,63 @@ export function Modal({
   maxWidth = 'md',
   className = '',
 }: ModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null)
+  const titleId = useId()
+
   useEffect(() => {
     if (!open) return
+
+    // Remember what was focused so we can restore it on close.
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null
+
+    const dialog = dialogRef.current
+    const getFocusable = () =>
+      dialog
+        ? Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+            (el) => el.offsetParent !== null || el === document.activeElement,
+          )
+        : []
+
+    // Move focus into the dialog: first focusable element, else the close button.
+    const focusables = getFocusable()
+    const first = focusables.find((el) => el !== closeButtonRef.current) ?? focusables[0]
+    ;(first ?? closeButtonRef.current)?.focus()
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab') return
+
+      const items = getFocusable()
+      if (items.length === 0) {
+        e.preventDefault()
+        closeButtonRef.current?.focus()
+        return
+      }
+      const firstItem = items[0]
+      const lastItem = items[items.length - 1]
+      const activeEl = document.activeElement
+      if (e.shiftKey) {
+        if (activeEl === firstItem || !dialog?.contains(activeEl)) {
+          e.preventDefault()
+          lastItem.focus()
+        }
+      } else if (activeEl === lastItem || !dialog?.contains(activeEl)) {
+        e.preventDefault()
+        firstItem.focus()
+      }
     }
+
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      // Restore focus to the previously-focused element on close.
+      previouslyFocusedRef.current?.focus?.()
+    }
   }, [open, onClose])
 
   if (!open) return null
@@ -59,8 +112,10 @@ export function Modal({
       role="presentation"
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
         onClick={(e) => e.stopPropagation()}
         className={`animate-fade-up w-full overflow-hidden rounded-card bg-surface-card shadow-card-lg ${MAX_WIDTH_CLASS[maxWidth]} ${className}`}
       >
@@ -72,9 +127,14 @@ export function Modal({
                   {eyebrow}
                 </div>
               ) : null}
-              {title ? <h2 className="text-xl font-extrabold text-text">{title}</h2> : null}
+              {title ? (
+                <h2 id={titleId} className="text-xl font-extrabold text-text">
+                  {title}
+                </h2>
+              ) : null}
             </div>
             <button
+              ref={closeButtonRef}
               type="button"
               onClick={onClose}
               aria-label="Close"
