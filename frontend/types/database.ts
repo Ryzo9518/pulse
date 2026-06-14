@@ -364,6 +364,78 @@ export interface PendingExpenseApproval {
   approver_name: string | null
 }
 
+// ── TRAINING / CERTIFICATION (Sage Intacct billable-readiness tracker) ──
+// Lets a junior consultant log the Sage University instructor-led training (ILT)
+// session they are booked on, and projects when they become billable across
+// three milestones: supervised → ILT complete → certified.
+
+/** Scheduling shape of a Sage U ILT session. */
+export type IltSessionFormat = 'fullday' | 'spread'
+
+/** A bookable Sage University instructor-led training session. */
+export interface IltSession {
+  id: string
+  course: string
+  /** ISO date (YYYY-MM-DD) the session starts. */
+  start_date: string
+  /** ISO date (YYYY-MM-DD) the session ends. */
+  end_date: string
+  /** 'fullday' = ~25h in one consecutive week; 'spread' = part-days over ~2 weeks. */
+  format: IltSessionFormat
+  /** ISO date registration closes. */
+  register_by: string
+  /** Free-text seat availability note captured from Sage U. */
+  seats_note: string
+}
+
+/** The certification track a consultant is working toward. */
+export type CertPath = 'implementation'
+
+/** One junior consultant's enrolment / progress against the tracker. */
+export interface TrainingEnrolment {
+  employee_id: string
+  /** The ILT session they have chosen, or null if not yet selected. */
+  session_id: string | null
+  cert_path: CertPath
+  /** Foundations done (Getting Started + console/provisioning) → supervised-billable. */
+  getting_started_done: boolean
+  /** The 25-hour Implementing ILT completed. */
+  ilt_done: boolean
+  /** Certification assessment passed. */
+  certified: boolean
+  updated_at: string
+}
+
+/** The three billable milestones, in order. */
+export type MilestoneKey = 'supervised' | 'ilt' | 'certified'
+
+export type MilestoneStatus = 'done' | 'on_track' | 'pending'
+
+/** A computed milestone with its projected/actual date and status. */
+export interface BillableMilestone {
+  key: MilestoneKey
+  label: string
+  /** ISO date (YYYY-MM-DD) — projected or actual. Null if it cannot be projected yet. */
+  date: string | null
+  status: MilestoneStatus
+}
+
+/** Admin roll-up row: one junior consultant's billable outlook. */
+export interface BillableSummaryRow {
+  employee_id: string
+  display_name: string
+  job_title: string | null
+  avatar_initials: string
+  avatar_color: string
+  session_id: string | null
+  session_label: string | null
+  supervised_date: string | null
+  ilt_date: string | null
+  certified_date: string | null
+  /** The next milestone not yet reached (or null when fully certified). */
+  next_milestone: MilestoneKey | null
+}
+
 // ── SUPABASE DATABASE TYPE (for typed client) ──
 // Developer: replace this with `npx supabase gen types typescript` output
 export interface Database {
