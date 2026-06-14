@@ -1,6 +1,8 @@
 // Auto-generated types matching pulse_v5_schema.sql
 // Developer: regenerate with `npx supabase gen types typescript` after schema changes
 
+import type { CertStatus } from '@/lib/certifications/status'
+
 export type UserRole = 'admin' | 'employee'
 export type EmployeeStatus = 'active' | 'onboarding' | 'probation' | 'suspended' | 'terminated'
 export type TaskStatus = 'pending' | 'inprogress' | 'done'
@@ -436,12 +438,69 @@ export interface BillableSummaryRow {
   next_milestone: MilestoneKey | null
 }
 
+// ── CERTIFICATION REGISTRY (Phase A) ──
+// One home for every consultant's externally-issued credentials. Status is
+// computed (never hand-set) by computeCertStatus in lib/certifications/status.ts.
+
+/** The three credential families the registry tracks (requirement R1). */
+export type CertFamily = 'sage' | 'professional' | 'vendor'
+
+/** Renewable (external certs) vs one-time (e.g. onboarding milestones) — R2. */
+export type CertLifecycle = 'renewable' | 'one_time'
+
+/** Re-exported so callers can import the status union from one place. */
+export type { CertStatus }
+
+/** A single credential held by a consultant. */
+export interface Certification {
+  id: string
+  employee_id: string
+  family: CertFamily
+  lifecycle_kind: CertLifecycle
+  name: string
+  issuing_body: string | null
+  issued_date: string | null
+  expiry_date: string | null
+  /** Date renewal action must start; precedes expiry (R2). Null = derive from expiry. */
+  renew_by_date: string | null
+  non_expiring: boolean
+  status: CertStatus
+  /** Path in the private 'certifications' storage bucket; null until a file is uploaded. */
+  proof_path: string | null
+  /** Reminders only fire for renew-by points crossed after this baseline (R22). */
+  reminders_baseline_at: string
+  verified_by: string | null
+  verified_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type CertEventType =
+  | 'created'
+  | 'verified'
+  | 'rejected'
+  | 'status_changed'
+  | 're_uploaded'
+  | 'reminder_sent'
+
+/** Append-only audit-log entry for a credential (requirement R3). */
+export interface CertificationEvent {
+  id: string
+  certification_id: string
+  event_type: CertEventType
+  actor_id: string | null
+  detail: Record<string, unknown> | null
+  created_at: string
+}
+
 // ── SUPABASE DATABASE TYPE (for typed client) ──
 // Developer: replace this with `npx supabase gen types typescript` output
 export interface Database {
   public: {
     Tables: {
       employees: { Row: Employee; Insert: Partial<Employee>; Update: Partial<Employee> }
+      certifications: { Row: Certification; Insert: Partial<Certification>; Update: Partial<Certification> }
+      certification_events: { Row: CertificationEvent; Insert: Partial<CertificationEvent>; Update: Partial<CertificationEvent> }
       employee_personal_info: { Row: EmployeePersonalInfo; Insert: Partial<EmployeePersonalInfo>; Update: Partial<EmployeePersonalInfo> }
       emergency_contacts: { Row: EmergencyContact; Insert: Partial<EmergencyContact>; Update: Partial<EmergencyContact> }
       employee_medical_info: { Row: EmployeeMedicalInfo; Insert: Partial<EmployeeMedicalInfo>; Update: Partial<EmployeeMedicalInfo> }

@@ -31,7 +31,11 @@ import type {
   BillableMilestone,
   BillableSummaryRow,
   MilestoneKey,
+  Certification,
+  CertificationEvent,
+  CertEventType,
 } from '@/types/database'
+import { computeCertStatus } from '@/lib/certifications/status'
 import { TOTAL_POLICIES, TOTAL_SOPS, TOTAL_FORMS } from '@/lib/constants'
 
 import {
@@ -65,6 +69,10 @@ import {
   findSession,
   formatSessionLabel,
 } from './training'
+import {
+  certifications as seedCertifications,
+  certificationEvents as seedCertEvents,
+} from './certifications'
 
 // ── Module-level mutable state (cloned from seeds so seeds stay pristine) ──
 const employeeState: Employee[] = seedEmployees.map((e) => ({ ...e }))
@@ -74,6 +82,8 @@ const taskStatusState: OnboardingTaskStatus[] = seedTaskStatuses.map((s) => ({
 }))
 const messageState: Message[] = seedMessages.map((m) => ({ ...m }))
 const enrolmentState: TrainingEnrolment[] = seedEnrolments.map((e) => ({ ...e }))
+const certificationState: Certification[] = seedCertifications.map((c) => ({ ...c }))
+const certEventState: CertificationEvent[] = seedCertEvents.map((e) => ({ ...e }))
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
@@ -156,6 +166,164 @@ export function getBillableSummary(): BillableSummaryRow[] {
     if (b.certified_date) return 1
     return a.display_name.localeCompare(b.display_name)
   })
+}
+
+// ── Certification registry ────────────────────────────────────────────────────
+
+/**
+ * Return a copy of a cert with its status freshly computed from its dates and
+ * verification state, so the displayed status never drifts from reality
+ * (requirements R4, R23). A cert is "verified" once it has a verified_at stamp.
+ */
+function withFreshStatus(cert: Certification): Certification {
+  const status = computeCertStatus(
+    {
+      verified: cert.verified_at != null,
+      non_expiring: cert.non_expiring,
+      issued_date: cert.issued_date,
+      expiry_date: cert.expiry_date,
+      renew_by_date: cert.renew_by_date,
+    },
+    new Date(),
+  )
+  return { ...cert, status }
+}
+
+/** A consultant's own credentials (requirement R18: own-certs-only). */
+export function getCertificationsForEmployee(employeeId: string): Certification[] {
+  return certificationState
+    .filter((c) => c.employee_id === employeeId)
+    .map(withFreshStatus)
+}
+
+/** Admin firm-wide view: every consultant's credentials (R14/R18 admin-only). */
+export function listAllCertifications(): Certification[] {
+  return certificationState.map(withFreshStatus)
+}
+
+export function getCertification(id: string): Certification | undefined {
+  const cert = certificationState.find((c) => c.id === id)
+  return cert ? withFreshStatus(cert) : undefined
+}
+
+/** The admin verification queue: uploads still pending a date check (R5). */
+export function listPendingCertifications(): Certification[] {
+  return certificationState
+    .filter((c) => c.verified_at == null)
+    .map(withFreshStatus)
+}
+
+/** Append-only audit-log entries for a credential (R3). */
+export function listCertificationEvents(certificationId: string): CertificationEvent[] {
+  return certEventState.filter((e) => e.certification_id === certificationId)
+}
+
+function appendCertEvent(
+  certificationId: string,
+  eventType: CertEventType,
+  actorId: string | null,
+  detail: Record<string, unknown> | null = null,
+): void {
+  certEventState.push({
+    id: `cert-evt-${certEventState.length + 1}`,
+    certification_id: certificationId,
+    event_type: eventType,
+    actor_id: actorId,
+    detail,
+    created_at: new Date().toISOString(),
+  })
+}
+
+/** Fields a consultant supplies when uploading a credential (status is derived). */
+export interface CertificationUploadInput {
+  employee_id: string
+  family: Certification['family']
+  lifecycle_kind?: Certification['lifecycle_kind']
+  name: string
+  issuing_body?: string | null
+  issued_date?: string | null
+  expiry_date?: string | null
+  renew_by_date?: string | null
+  non_expiring?: boolean
+  proof_path?: string | null
+}
+
+/**
+ * Upload a credential. Lands in `pending verification` until an admin confirms
+ * the dates (requirement R5). Independent of training — a consultant who already
+ * holds a cert uploads it directly. Emits a `created` audit event.
+ */
+export function addCertificationUpload(input: CertificationUploadInput): Certification {
+  const now = new Date().toISOString()
+  const cert: Certification = {
+    id: `cert-${certificationState.length + 1}`,
+    employee_id: input.employee_id,
+    family: input.family,
+    lifecycle_kind: input.lifecycle_kind ?? 'renewable',
+    name: input.name,
+    issuing_body: input.issuing_body ?? null,
+    issued_date: input.issued_date ?? null,
+    expiry_date: input.expiry_date ?? null,
+    renew_by_date: input.renew_by_date ?? null,
+    non_expiring: input.non_expiring ?? false,
+    status: 'pending_verification',
+    proof_path: input.proof_path ?? null,
+    reminders_baseline_at: now,
+    verified_by: null,
+    verified_at: null,
+    created_at: now,
+    updated_at: now,
+  }
+  certificationState.push(cert)
+  appendCertEvent(cert.id, 'created', input.employee_id, { source: 'upload' })
+  return withFreshStatus(cert)
+}
+
+/** Dates an admin confirms (or corrects) when verifying an upload. */
+export interface CertVerifyDates {
+  issued_date?: string | null
+  expiry_date?: string | null
+  renew_by_date?: string | null
+  non_expiring?: boolean
+}
+
+/**
+ * Admin verifies an upload after confirming its validity dates (R5). Applies any
+ * date corrections, stamps verified_by/at (which flips the computed status off
+ * `pending verification`), and writes a `verified` audit event.
+ */
+export function verifyCertification(
+  certificationId: string,
+  dates: CertVerifyDates,
+  adminId: string,
+): Certification {
+  const cert = certificationState.find((c) => c.id === certificationId)
+  if (!cert) throw new Error(`Unknown certification id: ${certificationId}`)
+  const now = new Date().toISOString()
+  if (dates.issued_date !== undefined) cert.issued_date = dates.issued_date
+  if (dates.expiry_date !== undefined) cert.expiry_date = dates.expiry_date
+  if (dates.renew_by_date !== undefined) cert.renew_by_date = dates.renew_by_date
+  if (dates.non_expiring !== undefined) cert.non_expiring = dates.non_expiring
+  cert.verified_by = adminId
+  cert.verified_at = now
+  cert.updated_at = now
+  appendCertEvent(cert.id, 'verified', adminId, { provenance: 'admin' })
+  return withFreshStatus(cert)
+}
+
+/**
+ * Admin rejects an upload (e.g. wrong/illegible file). Records a `rejected`
+ * audit event and removes the pending row so the consultant can re-upload.
+ */
+export function rejectCertification(
+  certificationId: string,
+  adminId: string,
+  reason: string,
+): void {
+  const idx = certificationState.findIndex((c) => c.id === certificationId)
+  if (idx === -1) throw new Error(`Unknown certification id: ${certificationId}`)
+  appendCertEvent(certificationId, 'rejected', adminId, { reason })
+  certificationState.splice(idx, 1)
 }
 
 export function listPhases(): OnboardingPhase[] {
@@ -418,7 +586,53 @@ export function setTrainingMilestone(
   }
   entry[key] = value
   entry.updated_at = now
+
+  // R11: reaching `certified` in the in-Pulse training path creates a pending
+  // registry entry (admin still confirms the dates per R5). Idempotent — does
+  // not create a second entry if training-completion already produced one.
+  if (key === 'certified' && value === true) {
+    createTrainingCertIfAbsent(employeeId)
+  }
+
   return entry
+}
+
+/** Create a pending Sage cert from a completed training path, once per employee. */
+function createTrainingCertIfAbsent(employeeId: string): void {
+  const alreadyCreated = certificationState.some(
+    (c) =>
+      c.employee_id === employeeId &&
+      certEventState.some(
+        (e) =>
+          e.certification_id === c.id &&
+          e.event_type === 'created' &&
+          e.detail?.source === 'training-completion',
+      ),
+  )
+  if (alreadyCreated) return
+
+  const now = new Date().toISOString()
+  const cert: Certification = {
+    id: `cert-${certificationState.length + 1}`,
+    employee_id: employeeId,
+    family: 'sage',
+    lifecycle_kind: 'renewable',
+    name: 'Sage Intacct Implementation Specialist',
+    issuing_body: 'Sage',
+    issued_date: now.slice(0, 10),
+    expiry_date: null,
+    renew_by_date: null,
+    non_expiring: false,
+    status: 'pending_verification',
+    proof_path: null,
+    reminders_baseline_at: now,
+    verified_by: null,
+    verified_at: null,
+    created_at: now,
+    updated_at: now,
+  }
+  certificationState.push(cert)
+  appendCertEvent(cert.id, 'created', employeeId, { source: 'training-completion' })
 }
 
 // ── Test-only helper: restore all mutable state to the original seeds. ─────────
@@ -444,6 +658,16 @@ export function __resetMockState(): void {
     0,
     enrolmentState.length,
     ...seedEnrolments.map((e) => ({ ...e }))
+  )
+  certificationState.splice(
+    0,
+    certificationState.length,
+    ...seedCertifications.map((c) => ({ ...c }))
+  )
+  certEventState.splice(
+    0,
+    certEventState.length,
+    ...seedCertEvents.map((e) => ({ ...e }))
   )
 }
 

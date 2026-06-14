@@ -87,7 +87,10 @@ export function Sidebar() {
     },
     {
       label: 'People',
-      items: [{ href: '/people', icon: '◉', label: 'Directory' }],
+      items: [
+        { href: '/people', icon: '◉', label: 'Directory' },
+        { href: '/certifications', icon: '📜', label: 'Certifications' },
+      ],
     },
     {
       label: 'Development',
