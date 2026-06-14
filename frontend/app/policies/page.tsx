@@ -119,9 +119,9 @@ export default function PoliciesPage() {
             </div>
           ) : (
             <p className="mt-3 text-xs text-text-muted">
-              {total - acknowledgedCount} policy
-              {total - acknowledgedCount === 1 ? '' : 'ies'} remaining. You must
-              acknowledge every policy before accessing other onboarding
+              {total - acknowledgedCount}{' '}
+              {total - acknowledgedCount === 1 ? 'policy' : 'policies'} remaining.
+              You must acknowledge every policy before accessing other onboarding
               sections.
             </p>
           )}
