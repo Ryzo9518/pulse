@@ -90,6 +90,10 @@ export function Sidebar() {
       items: [{ href: '/people', icon: '◉', label: 'Directory' }],
     },
     {
+      label: 'Development',
+      items: [{ href: '/training', icon: '🎓', label: 'Cert Tracker' }],
+    },
+    {
       label: 'Finance',
       items: [{ href: '/expenses', icon: '💰', label: 'Expenses' }],
     },
