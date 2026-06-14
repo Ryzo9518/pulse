@@ -26,6 +26,39 @@ We are building the **frontend before the backend**. Until further notice:
 - **Wait for the review action's verdict** before asking the user to merge. If it flags real issues, address them in the same PR.
 - **Ryan is the Ops Director, not a developer.** Explain changes in plain language. Flag any step that needs him to do something technical (create a secret, click a button in GitHub/Supabase) clearly and with the exact command or click path.
 
+## Mandatory Specialist Review Before Merge
+
+Every PR is reviewed against the relevant dimensions below before it is marked ready-to-merge. This is the team's review standard (ported from the intacct-toolkit codebase audit, where a multi-agent dimension pass surfaced cross-cutting HIGH-severity findings that single-pass, per-task review had missed — e.g. "any authenticated user can read every client's data," which only showed up when looking at the whole auth → routers chain, not any single file). Per-task review catches most issues but is scoped to one task at a time; the dimension pass closes the gap on issues that only appear across files, and it is cheap relative to the cost of shipping a HIGH-severity bug.
+
+**PULSE is in its frontend-first phase.** Only the frontend-relevant dimensions fire today. The backend / data / API / operations dimensions stay dormant until the backend phase creates `backend/` (or equivalent) — they are listed here so the standard is documented once and activates automatically when those paths appear. PULSE has no inherited deferred findings; it never ran the intacct-toolkit audit, that audit is only the origin of this policy.
+
+### Active now (frontend phase)
+
+| # | Dimension | Specialist agent | When to invoke |
+|---|-----------|------------------|----------------|
+| 1 | Security | `compound-engineering:review:ce-security-sentinel` | Always |
+| 7 | Testing | `compound-engineering:review:ce-testing-reviewer` | Always |
+| 9 | Project-standards drift | `compound-engineering:review:ce-project-standards-reviewer` | Always — catches drift from this CLAUDE.md |
+| 3 | Frontend / UX | `general-purpose` with a detailed prompt | When `frontend/` is touched (i.e. nearly every PR this phase) |
+| 8 | Documentation accuracy | `general-purpose` | When `docs/` is touched, or a feature ships that supersedes an existing doc |
+| 10 | Dependencies | `general-purpose` | When `frontend/package.json` or its lockfile is touched |
+| 6 | Performance | `compound-engineering:review:ce-performance-oracle` | When hot paths, loops, or expensive client rendering are touched |
+
+### Dormant until the backend phase
+
+| # | Dimension | Specialist agent | Trigger (once a backend exists) |
+|---|-----------|------------------|---------------------------------|
+| 2 | Backend architecture | `compound-engineering:review:ce-architecture-strategist` | When the backend service code is touched |
+| 4 | Data integrity | `compound-engineering:review:ce-data-integrity-guardian` | When DB models or migrations are touched |
+| 5 | API contracts | `compound-engineering:review:ce-api-contract-reviewer` | When API routes or any response shape is touched |
+| 11 | Operations | `general-purpose` | When deploy notes, systemd units, nginx/Caddy config, or env handling is touched |
+
+Always-tier dimensions (Security, Testing, Project-standards drift) run on every PR regardless of what the diff touches. Conditional dimensions run when the diff trips their trigger. A typical frontend screen PR lands at ~3–4 dimensions.
+
+**Invocation.** For a per-PR review, dispatch each applicable dimension via the Agent tool with `subagent_type` set to the specialist (e.g. `compound-engineering:review:ce-security-sentinel`). Each reviewer reads the diff and returns findings. Adversarially verify any HIGH or MEDIUM finding via `compound-engineering:review:ce-adversarial-reviewer` before deciding to fix or defer. For a full-codebase audit (quarterly, after a major refactor, or when entering unfamiliar territory), use the Workflow tool to fan the dimensions out across the codebase rather than reviewing a single diff.
+
+**Ready-to-merge gate.** A PR is ready to merge only when (1) all Always-tier dimensions have been reviewed, (2) all conditional dimensions whose triggers fire have been reviewed, (3) every finding has been fixed in this PR, refuted by the adversarial reviewer, or explicitly deferred with a tracked follow-up reference in the PR body, and (4) the Claude code-review GitHub Action has passed.
+
 ## Repository Layout
 
 - `frontend/` — Next.js 14 App Router + Tailwind. Screens live under `frontend/app/`, shared UI under `frontend/components/`.
