@@ -105,7 +105,7 @@ flowchart TD
 
 ## Implementation Units
 
-- [ ] **Unit 1: Backend foundation & build prerequisites**
+- [~] **Unit 1: Backend foundation & build prerequisites** _(service-role client scaffold written; Supabase confirmation + service-role key + scheduler decision still needed from Ryan)_
 
 **Goal:** Stand up the real-write path the rest of Phase A depends on and settle the deployment unknowns flagged "verify before building."
 
@@ -133,7 +133,7 @@ flowchart TD
 
 **Verification:** A server-only privileged client exists and can write; the scheduler mechanism and secret storage are documented and reproducible on the host.
 
-- [ ] **Unit 2: Certification data model + RLS + audit log**
+- [x] **Unit 2: Certification data model + RLS + audit log** _(migration written; not yet applied to Supabase)_
 
 **Goal:** The registry tables, security policies, and append-only audit trail.
 
@@ -186,7 +186,7 @@ flowchart TD
 
 **Verification:** Files are private-by-default; only valid types/sizes are accepted; proof is retrievable only via signed URL.
 
-- [ ] **Unit 4: Status engine (shared pure function)**
+- [x] **Unit 4: Status engine (shared pure function)** _(done — 11 tests passing)_
 
 **Goal:** One source of truth for credential status, used by mock and backend.
 
@@ -216,7 +216,7 @@ flowchart TD
 
 **Verification:** All boundary cases covered; mock and backend can both call it.
 
-- [ ] **Unit 5: Mock accessors + types for the registry**
+- [x] **Unit 5: Mock accessors + types for the registry** _(done — 8 seam tests passing)_
 
 **Goal:** The seam additions so the UI can be built mock-first.
 
@@ -242,7 +242,7 @@ flowchart TD
 
 **Verification:** Screens can read/mutate the registry through `@/lib/mock` with no direct seed imports.
 
-- [ ] **Unit 6: Registry UI (mock-first)**
+- [x] **Unit 6: Registry UI (mock-first)** _(done — consultant + admin screens; page tests follow repo convention of seam-only testing, matching training/page.tsx)_
 
 **Goal:** The consultant and admin screens.
 
