@@ -7,10 +7,11 @@
 // POPIA/personal data, no admin actions (HANDOFF §2). Employees are redirected
 // to /dashboard and see nothing meanwhile.
 //
-// NOTE (W8): the manager view here is the minimal POPIA-safe roster. The richer
-// prototype version (stat cards, 2FA column) lands in the admin-screens
-// workstream. The team scoping + work-fields-only projection are enforced now so
-// no personal data leaks to managers in the interim.
+// W8: the ADMIN view adds three stat cards (Total / Active / Onboarding) and a
+// 2FA column (Enabled/Pending from employee.two_factor_enabled). The MANAGER view
+// is unchanged — team-scoped, work-fields-only (name/department/status), with no
+// phone, no 2FA, and no POPIA personal data. The column boundary is enforced by
+// rosterColumnKeys(); the stat cards render only for the admin (canSeePersonal).
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -23,6 +24,8 @@ import {
   Button,
   Card,
   DataTable,
+  StatCard,
+  StatCardGrid,
   useToast,
   type BadgeColor,
   type DataTableColumn,
@@ -76,6 +79,14 @@ export default function AdminEmployeesPage() {
     ? listEmployees()
     : listTeam(currentEmployee?.id ?? '')
 
+  // Admin-only roster stats (Total / Active / Onboarding), computed live from the
+  // visible roster. Not shown to managers.
+  const totalCount = employees.length
+  const activeCount = employees.filter((e) => e.status === 'active').length
+  const onboardingCount = employees.filter(
+    (e) => e.status === 'onboarding',
+  ).length
+
   // All available columns, keyed. The viewer's allowed set is decided by the
   // pure rosterColumnKeys() above, so the admin-only columns (role/phone/Notify)
   // can never render for a manager.
@@ -126,6 +137,16 @@ export default function AdminEmployeesPage() {
         </span>
       ),
     },
+    twofa: {
+      key: 'twofa',
+      header: '2FA',
+      render: (e) =>
+        e.two_factor_enabled ? (
+          <Badge color="green">Enabled</Badge>
+        ) : (
+          <Badge color="grey">Pending</Badge>
+        ),
+    },
     actions: {
       key: 'actions',
       header: '',
@@ -163,7 +184,18 @@ export default function AdminEmployeesPage() {
             : 'Your team members'
         }
       />
-      <div className="px-10 py-8">
+      <div className="flex flex-col gap-6 px-10 py-8">
+        {canSeePersonal ? (
+          <StatCardGrid className="min-[900px]:grid-cols-3">
+            <StatCard value={totalCount} label="Total employees" accent="blue" />
+            <StatCard value={activeCount} label="Active" accent="green" />
+            <StatCard
+              value={onboardingCount}
+              label="Onboarding"
+              accent="amber"
+            />
+          </StatCardGrid>
+        ) : null}
         <Card padded={false} className="overflow-hidden">
           <div className="overflow-x-auto">
             <DataTable

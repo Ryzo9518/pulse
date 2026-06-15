@@ -99,7 +99,8 @@ describe('Sidebar role-based admin visibility', () => {
     expect(screen.getByText('Admin')).toBeInTheDocument()
     expect(screen.getByText('All Employees')).toBeInTheDocument()
     expect(screen.getByText('New Employee')).toBeInTheDocument()
-    expect(screen.getByText('Passwords')).toBeInTheDocument()
     expect(screen.getByText('Notify All')).toBeInTheDocument()
+    // Passwords screen was removed (decision D4).
+    expect(screen.queryByText('Passwords')).not.toBeInTheDocument()
   })
 })

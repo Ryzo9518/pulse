@@ -17,9 +17,15 @@ describe('rosterColumnKeys — POPIA column projection', () => {
     expect(keys).not.toContain('actions')
   })
 
-  it('an admin gets the full column set including phone', () => {
+  it('the manager view excludes the 2FA column (W8 admin-only)', () => {
+    // 2FA status is a security attribute the manager view must never surface.
+    expect(rosterColumnKeys(false)).not.toContain('twofa')
+  })
+
+  it('an admin gets the full column set including phone and 2FA', () => {
     const keys = rosterColumnKeys(true)
     expect(keys).toContain('phone')
+    expect(keys).toContain('twofa')
     expect(keys).toContain('role')
     expect(keys).toContain('actions')
   })

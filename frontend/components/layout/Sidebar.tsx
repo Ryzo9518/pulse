@@ -138,7 +138,6 @@ export function Sidebar() {
       items: [
         { href: '/admin/employees', icon: '👥', label: 'All Employees' },
         { href: '/admin/onboard', icon: '➕', label: 'New Employee' },
-        { href: '/admin/passwords', icon: '🔑', label: 'Passwords' },
         { href: '/admin/notify', icon: '📣', label: 'Notify All' },
       ],
     })

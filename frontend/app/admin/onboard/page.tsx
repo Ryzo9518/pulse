@@ -1,15 +1,21 @@
 'use client'
 
-// ── Admin · Onboard New Employee ──────────────────────────────────────────────
-// Admin-only "New Employee" form. Mirrors the prototype's `view-admin-onboard`:
-// name, job title/role, email, department, start date, and manager (chosen from
-// existing employees). On submit it validates required fields, appends a mock
-// employee, and fires a success toast.
+// ── Admin · New Employee / Schedule Onboarding ────────────────────────────────
+// Managers and admins (can(role,'scheduleOnboarding')) capture a new starter and
+// kick off their onboarding workflow. Rebuilt to the prototype's newEmployeeData():
+//   - a Primary Sage product select + an Onboarding buddy select
+//   - email is OPTIONAL and auto-derives to {first}@jera.co.za when left blank
+//   - a "Will generate N tasks across M phases" preview panel (per-phase chips
+//     with counts), driven by the mock seam's generation plan
+//   - on submit, a success hero ("{name} is onboarding") + "View workflow →" CTA
 //
-// NOTE: the mock accessor layer (lib/mock) exposes no add-employee mutator, so
-// this screen falls back to LOCAL component state for the created record. The
-// newly-added employees are shown in an on-page confirmation list. When a
-// mutator is added later, swap `setCreated` for that call — the rest stays.
+// A manager may schedule a starter but never sees the employment contract / HR
+// tasks — that boundary is enforced in the workflow view (listTasks), so nothing
+// contract-related is surfaced here.
+//
+// The mock seam exposes no add-employee mutator yet, so the created record is held
+// in local component state for the success hero. Swap setCreated for a mutator in
+// the backend phase; the rest of the screen stays.
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -17,7 +23,6 @@ import { useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
 import {
-  Avatar,
   Button,
   Card,
   Input,
@@ -27,9 +32,14 @@ import {
 } from '@/components/ui'
 import { useSession } from '@/lib/mock/session'
 import { can } from '@/lib/capabilities'
-import { listEmployees } from '@/lib/mock'
-import { AVATAR_COLOURS } from '@/lib/constants'
-import type { Employee } from '@/types/database'
+import {
+  getOnboardingGenerationPlan,
+  getOnboardingGenerationTaskTotal,
+  listEmployees,
+  listProducts,
+} from '@/lib/mock'
+import { deriveWorkEmail } from '@/lib/onboardGenerate'
+import type { ProductId } from '@/types/database'
 
 const DEPARTMENTS = [
   'Management',
@@ -44,41 +54,38 @@ const DEPARTMENTS = [
 interface FormState {
   name: string
   jobTitle: string
-  email: string
   department: string
+  product: ProductId
   startDate: string
-  managerId: string
+  email: string
+  buddy: string
 }
 
 interface FormErrors {
   name?: string
   jobTitle?: string
-  email?: string
   department?: string
   startDate?: string
-  managerId?: string
+}
+
+interface CreatedHire {
+  name: string
+  email: string
+  detail: string
 }
 
 const EMPTY_FORM: FormState = {
   name: '',
   jobTitle: '',
-  email: '',
-  department: '',
+  department: 'Consulting',
+  product: 'intacct',
   startDate: '',
-  managerId: '',
+  email: '',
+  buddy: '',
 }
 
-function deriveInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return '?'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-}
-
-function splitName(name: string): { first: string; last: string } {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length <= 1) return { first: parts[0] ?? '', last: '' }
-  return { first: parts[0], last: parts.slice(1).join(' ') }
+function firstNameOf(name: string): string {
+  return name.trim().split(/\s+/).filter(Boolean)[0] ?? ''
 }
 
 export default function AdminOnboardPage() {
@@ -88,8 +95,7 @@ export default function AdminOnboardPage() {
 
   // ── Capability guard ──
   // Managers and admins may schedule onboarding; everyone else is redirected and
-  // sees nothing while the redirect resolves. (A manager may schedule but never
-  // sees the contract / HR-admin tasks — that is enforced in the workflow view.)
+  // sees nothing while the redirect resolves.
   const canSchedule = can(role, 'scheduleOnboarding')
   useEffect(() => {
     if (!canSchedule) {
@@ -99,23 +105,33 @@ export default function AdminOnboardPage() {
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [errors, setErrors] = useState<FormErrors>({})
-  // Local fallback for created employees — no add-employee mutator exists in
-  // the mock layer yet, so newly created records live here for this session.
-  const [created, setCreated] = useState<Employee[]>([])
-
-  const managerOptions: SelectOption[] = useMemo(
-    () =>
-      listEmployees().map((e) => ({
-        value: e.id,
-        label: `${e.display_name}${e.job_title ? ` · ${e.job_title}` : ''}`,
-      })),
-    [],
-  )
+  const [created, setCreated] = useState<CreatedHire | null>(null)
 
   const departmentOptions: SelectOption[] = useMemo(
     () => DEPARTMENTS.map((d) => ({ value: d, label: d })),
     [],
   )
+
+  const productOptions: SelectOption[] = useMemo(
+    () => listProducts().map((p) => ({ value: p.id, label: p.name })),
+    [],
+  )
+
+  // Buddy = an existing active employee (or "Assign later").
+  const buddyOptions: SelectOption[] = useMemo(
+    () => [
+      { value: '', label: 'Assign later' },
+      ...listEmployees()
+        .filter((e) => e.status === 'active')
+        .map((e) => ({ value: e.id, label: e.display_name })),
+    ],
+    [],
+  )
+
+  // Generation preview — what the workflow WILL create (per-phase counts + total).
+  const generationPlan = useMemo(() => getOnboardingGenerationPlan(), [])
+  const taskTotal = useMemo(() => getOnboardingGenerationTaskTotal(), [])
+  const phaseTotal = generationPlan.length
 
   if (!canSchedule) {
     return null
@@ -123,21 +139,15 @@ export default function AdminOnboardPage() {
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
-    setErrors((prev) => ({ ...prev, [key]: undefined }))
+    if (key in errors) setErrors((prev) => ({ ...prev, [key]: undefined }))
   }
 
   function validate(values: FormState): FormErrors {
     const next: FormErrors = {}
     if (!values.name.trim()) next.name = 'Full name is required.'
     if (!values.jobTitle.trim()) next.jobTitle = 'Job title is required.'
-    if (!values.email.trim()) {
-      next.email = 'Email is required.'
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
-      next.email = 'Enter a valid email address.'
-    }
     if (!values.department) next.department = 'Select a department.'
     if (!values.startDate) next.startDate = 'Start date is required.'
-    if (!values.managerId) next.managerId = 'Select a manager.'
     return next
   }
 
@@ -147,146 +157,178 @@ export default function AdminOnboardPage() {
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors)
       toast({
-        title: 'Check the form',
-        message: 'Please complete all required fields.',
+        title: 'Missing details',
+        message: 'Enter at least a name, role and start date.',
         variant: 'error',
       })
       return
     }
 
-    const { first, last } = splitName(form.name)
-    const now = new Date().toISOString()
-    const id = `emp-new-${created.length + 1}-${Date.now()}`
-    const color = AVATAR_COLOURS[created.length % AVATAR_COLOURS.length]
+    const name = form.name.trim()
+    // Email is optional: auto-derive {first}@jera.co.za when blank.
+    const email = deriveWorkEmail(form.email, name)
+    const product = listProducts().find((p) => p.id === form.product)
+    const productName = product?.name ?? form.product
 
-    const employee: Employee = {
-      id,
-      email: form.email.trim(),
-      first_name: first,
-      last_name: last,
-      display_name: form.name.trim(),
-      avatar_initials: deriveInitials(form.name),
-      role: 'employee',
-      status: 'onboarding',
-      job_title: form.jobTitle.trim(),
-      department: form.department,
-      phone: null,
-      avatar_color: color,
-      manager_id: form.managerId,
-      start_date: form.startDate,
-      two_factor_enabled: false,
-      expense_role: 'submitter',
-      policies_completed: false,
-      onboarding_completed: false,
-      created_at: now,
-      updated_at: now,
-    }
-
-    // Fallback: append to local state (no mock mutator available).
-    setCreated((prev) => [employee, ...prev])
+    setCreated({
+      name,
+      email,
+      detail: `${form.jobTitle.trim()} · ${productName} · ${taskTotal} onboarding tasks generated · welcome email to ${email}`,
+    })
     setForm(EMPTY_FORM)
     setErrors({})
 
     toast({
-      title: 'Employee created',
-      message: `${employee.display_name} has been added and onboarding has started.`,
+      title: 'Onboarding started',
+      message: `${name} added to the roster. ${taskTotal} tasks generated.`,
       variant: 'success',
     })
+  }
+
+  const eyebrow = role === 'admin' ? 'Admin' : 'My team'
+  const title = role === 'admin' ? 'New Employee' : 'Schedule Onboarding'
+
+  // ── Success hero ──
+  if (created) {
+    return (
+      <AppShell>
+        <PageHeader
+          eyebrow={eyebrow}
+          title={title}
+          subtitle="Create a new employee record and kick off onboarding"
+        />
+        <div className="px-10 py-8">
+          <Card className="mx-auto max-w-[560px] text-center">
+            <div className="mb-3 text-[44px] leading-none" aria-hidden>
+              🎉
+            </div>
+            <h2 className="text-[20px] font-extrabold text-text">
+              {created.name} is onboarding
+            </h2>
+            <p className="mx-auto mt-2 max-w-[440px] text-[13px] text-text-secondary">
+              {created.detail}
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <Button variant="primary" onClick={() => router.push('/workflow')}>
+                View workflow →
+              </Button>
+              <Button variant="ghost" onClick={() => setCreated(null)}>
+                Onboard another
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </AppShell>
+    )
   }
 
   return (
     <AppShell>
       <PageHeader
-        eyebrow={role === 'admin' ? 'Admin' : 'My team'}
-        title={role === 'admin' ? 'Onboard New Employee' : 'Schedule Onboarding'}
+        eyebrow={eyebrow}
+        title={title}
         subtitle="Create a new employee record and kick off onboarding"
       />
-      <div className="px-10 py-8">
-        <div className="max-w-[560px]">
-          <Card>
-            <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
-              <Input
-                label="Full Name"
-                name="name"
-                placeholder="e.g. Thabo Mokoena"
-                value={form.name}
-                error={errors.name}
-                onChange={(e) => update('name', e.target.value)}
-              />
-              <Input
-                label="Job Title / Role"
-                name="jobTitle"
-                placeholder="e.g. Support Technician"
-                value={form.jobTitle}
-                error={errors.jobTitle}
-                onChange={(e) => update('jobTitle', e.target.value)}
-              />
-              <Input
-                label="Email"
-                name="email"
-                type="email"
-                placeholder="e.g. thabo@jera.co.za"
-                value={form.email}
-                error={errors.email}
-                onChange={(e) => update('email', e.target.value)}
-              />
-              <Select
-                label="Department"
-                name="department"
-                placeholder="Select…"
-                options={departmentOptions}
-                value={form.department}
-                error={errors.department}
-                onChange={(e) => update('department', e.target.value)}
-              />
-              <Input
-                label="Start Date"
-                name="startDate"
-                type="date"
-                value={form.startDate}
-                error={errors.startDate}
-                onChange={(e) => update('startDate', e.target.value)}
-              />
-              <Select
-                label="Assign Manager"
-                name="managerId"
-                placeholder="Select…"
-                options={managerOptions}
-                value={form.managerId}
-                error={errors.managerId}
-                onChange={(e) => update('managerId', e.target.value)}
-              />
-              <Button type="submit" variant="primary" fullWidth>
-                Create Employee &amp; Start Onboarding
-              </Button>
-            </form>
-          </Card>
+      <div className="grid gap-6 px-10 py-8 lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
+        <Card>
+          <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
+            <Input
+              label="Full Name"
+              name="name"
+              placeholder="e.g. Thabo Mokoena"
+              value={form.name}
+              error={errors.name}
+              onChange={(e) => update('name', e.target.value)}
+            />
+            <Input
+              label="Job Title / Role"
+              name="jobTitle"
+              placeholder="e.g. Support Technician"
+              value={form.jobTitle}
+              error={errors.jobTitle}
+              onChange={(e) => update('jobTitle', e.target.value)}
+            />
+            <Select
+              label="Department"
+              name="department"
+              placeholder="Select…"
+              options={departmentOptions}
+              value={form.department}
+              error={errors.department}
+              onChange={(e) => update('department', e.target.value)}
+            />
+            <Select
+              label="Primary Sage product"
+              name="product"
+              options={productOptions}
+              value={form.product}
+              onChange={(e) => update('product', e.target.value as ProductId)}
+            />
+            <Input
+              label="Start Date"
+              name="startDate"
+              type="date"
+              value={form.startDate}
+              error={errors.startDate}
+              onChange={(e) => update('startDate', e.target.value)}
+            />
+            <Input
+              label="Email (optional)"
+              name="email"
+              type="email"
+              placeholder={
+                form.name.trim()
+                  ? `${firstNameOf(form.name).toLowerCase()}@jera.co.za`
+                  : 'Auto: {first}@jera.co.za'
+              }
+              value={form.email}
+              onChange={(e) => update('email', e.target.value)}
+            />
+            <Select
+              label="Onboarding buddy"
+              name="buddy"
+              options={buddyOptions}
+              value={form.buddy}
+              onChange={(e) => update('buddy', e.target.value)}
+            />
+            <Button type="submit" variant="primary" fullWidth>
+              Create Employee &amp; Start Onboarding
+            </Button>
+          </form>
+        </Card>
 
-          {created.length > 0 ? (
-            <Card title="Created this session" className="mt-4">
-              <ul className="flex flex-col gap-3">
-                {created.map((e) => (
-                  <li key={e.id} className="flex items-center gap-3">
-                    <Avatar
-                      initials={e.avatar_initials}
-                      color={e.avatar_color}
-                      label={e.display_name}
-                      size="sm"
-                    />
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-semibold text-text">
-                        {e.display_name}
-                      </div>
-                      <div className="text-[11px] text-text-muted">
-                        {e.job_title} · {e.department} · {e.email}
-                      </div>
+        {/* Generation preview */}
+        <Card title={`Will generate ${taskTotal} tasks across ${phaseTotal} phases`}>
+          <div className="flex flex-col gap-3">
+            {generationPlan.map((phase) => (
+              <div
+                key={phase.id}
+                className="flex items-center gap-3 rounded-btn border border-surface-border-light bg-surface px-3 py-[10px]"
+              >
+                <span className="text-base" aria-hidden>
+                  {phase.icon}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-semibold text-text">
+                    {phase.name}
+                  </div>
+                  {phase.days_label ? (
+                    <div className="text-[11px] text-text-muted">
+                      {phase.days_label}
                     </div>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          ) : null}
-        </div>
+                  ) : null}
+                </div>
+                <span className="inline-flex flex-shrink-0 items-center rounded-badge bg-jera-red-light px-[10px] py-1 text-[12px] font-bold text-jera-red">
+                  {phase.task_count} {phase.task_count === 1 ? 'task' : 'tasks'}
+                </span>
+              </div>
+            ))}
+            <p className="text-[11px] text-text-muted">
+              Tasks are auto-assigned to the right owners and scheduled relative to
+              the start date.
+            </p>
+          </div>
+        </Card>
       </div>
     </AppShell>
   )
