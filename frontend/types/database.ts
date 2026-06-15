@@ -32,6 +32,13 @@ export interface Employee {
   display_name: string        // auto-generated
   avatar_initials: string     // auto-generated
   role: UserRole
+  /**
+   * Super-admin / owner. Unrestricted access AND protected top authority: only an
+   * owner may grant/revoke admin/owner, and an owner can't be demoted or locked
+   * out. Optional in the type for back-compat; enforced in the DB (is_owner +
+   * trigger) — see database/migrations/002_rls.sql.
+   */
+  is_owner?: boolean
   status: EmployeeStatus
   job_title: string | null
   department: string | null
