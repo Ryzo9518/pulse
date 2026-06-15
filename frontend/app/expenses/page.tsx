@@ -377,6 +377,7 @@ function ClaimForm() {
   const [advanceRows, setAdvanceRows] = useState<AdvanceRow[]>([emptyAdvanceRow()])
   const [period, setPeriod] = useState('')
   const [timesheetName, setTimesheetName] = useState<string | null>(null)
+  const [slipNames, setSlipNames] = useState<string[]>([])
   const [submitted, setSubmitted] = useState(false)
   const [showErrors, setShowErrors] = useState(false)
 
@@ -406,6 +407,9 @@ function ClaimForm() {
     (r) => r.amount.trim() !== '' && r.details.trim() === '',
   )
   const timesheetMissing = timesheetName === null
+  // Receipt slips back the "expenses incurred" lines, so they're only required
+  // when the claim actually has incurred expenses (a travel-only claim needs none).
+  const slipsMissing = totals.totalOther > 0 && slipNames.length === 0
   // A travel line with distance but no resolvable per-km rate (e.g. an AA
   // certificate with a blank/zero rate) would silently reimburse R0 — block it.
   const travelMissingRate = travelRows.some(
@@ -445,6 +449,16 @@ function ClaimForm() {
         variant: 'error',
         title: 'Timesheet required',
         message: 'A copy of your timesheet must accompany this claim form.',
+      })
+      return
+    }
+    // Slips gate: incurred expenses need receipt slips attached.
+    if (slipsMissing) {
+      setShowErrors(true)
+      toast({
+        variant: 'error',
+        title: 'Receipt slips required',
+        message: 'Attach the receipt slips for the expenses you incurred.',
       })
       return
     }
@@ -867,41 +881,81 @@ function ClaimForm() {
           </div>
         </div>
 
-        {/* Timesheet attach control — submit is blocked until attached */}
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          <label
-            className={`inline-flex cursor-pointer items-center gap-2 rounded-btn border px-4 py-[11px] text-[13px] font-semibold transition-colors ${
-              timesheetName
-                ? 'border-jera-green/40 bg-jera-green/10 text-jera-green'
-                : 'border-dashed border-surface-border bg-surface text-text-secondary hover:bg-surface-border-light'
-            }`}
-            title="Attach timesheet (mock)"
-          >
-            {timesheetName ? '✓ Timesheet attached' : '📎 Attach timesheet'}
-            <input
-              type="file"
-              accept="image/*,application/pdf,.xlsx,.csv"
-              className="sr-only"
-              aria-label="Attach timesheet"
-              onChange={(e) =>
-                setTimesheetName(e.target.files?.[0]?.name ?? null)
-              }
-            />
-          </label>
-          {timesheetName ? (
-            <span className="max-w-[220px] truncate text-[11px] text-text-muted">
-              {timesheetName}
+        {/* Attachments — timesheet (always required) + receipt slips (required
+            when there are incurred expenses). Submit is blocked until present. */}
+        <div className="mb-3 flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <label
+              className={`inline-flex cursor-pointer items-center gap-2 rounded-btn border px-4 py-[11px] text-[13px] font-semibold transition-colors ${
+                timesheetName
+                  ? 'border-jera-green/40 bg-jera-green/10 text-jera-green'
+                  : 'border-dashed border-surface-border bg-surface text-text-secondary hover:bg-surface-border-light'
+              }`}
+              title="Attach timesheet (mock)"
+            >
+              {timesheetName ? '✓ Timesheet attached' : '📎 Attach timesheet'}
+              <input
+                type="file"
+                accept="image/*,application/pdf,.xlsx,.csv"
+                className="sr-only"
+                aria-label="Attach timesheet"
+                onChange={(e) =>
+                  setTimesheetName(e.target.files?.[0]?.name ?? null)
+                }
+              />
+            </label>
+
+            <label
+              className={`inline-flex cursor-pointer items-center gap-2 rounded-btn border px-4 py-[11px] text-[13px] font-semibold transition-colors ${
+                slipNames.length > 0
+                  ? 'border-jera-green/40 bg-jera-green/10 text-jera-green'
+                  : 'border-dashed border-surface-border bg-surface text-text-secondary hover:bg-surface-border-light'
+              }`}
+              title="Attach receipt slips (mock)"
+            >
+              {slipNames.length > 0
+                ? `✓ ${slipNames.length} slip${slipNames.length === 1 ? '' : 's'} attached`
+                : '📎 Attach slips'}
+              <input
+                type="file"
+                multiple
+                accept="image/*,application/pdf"
+                className="sr-only"
+                aria-label="Attach receipt slips"
+                onChange={(e) =>
+                  setSlipNames((prev) => [
+                    ...prev,
+                    ...Array.from(e.target.files ?? []).map((f) => f.name),
+                  ])
+                }
+              />
+            </label>
+          </div>
+
+          <div className="flex flex-col gap-[2px] text-[11.5px] text-text-muted">
+            <span className={timesheetName ? '' : 'text-text-muted'}>
+              {timesheetName
+                ? `Timesheet: ${timesheetName}`
+                : 'Timesheet required — a copy must accompany this claim.'}
             </span>
-          ) : (
-            <span className="text-[11.5px] text-text-muted">
-              Required — a copy of your timesheet must accompany this claim.
+            <span className="max-w-full truncate">
+              {slipNames.length > 0
+                ? `Slips: ${slipNames.join(', ')}`
+                : totals.totalOther > 0
+                  ? 'Receipt slips required for the expenses you incurred.'
+                  : 'Slips optional — no expenses incurred on this claim.'}
             </span>
-          )}
+          </div>
         </div>
 
         {showErrors && timesheetMissing && !submitted ? (
           <p className="mb-3 text-xs font-semibold text-jera-red">
             Attach your timesheet before submitting.
+          </p>
+        ) : null}
+        {showErrors && slipsMissing && !submitted ? (
+          <p className="mb-3 text-xs font-semibold text-jera-red">
+            Attach receipt slips for your expenses incurred before submitting.
           </p>
         ) : null}
 
