@@ -375,15 +375,108 @@ export interface PendingExpenseApproval {
   approver_name: string | null
 }
 
-// ── TRAINING / CERTIFICATION (Sage Intacct billable-readiness tracker) ──
-// Lets a junior consultant log the Sage University instructor-led training (ILT)
-// session they are booked on, and projects when they become billable across
-// three milestones: supervised → ILT complete → certified.
+// ── TRAINING / CERTIFICATION (Sage product billable-readiness tracker) ──
+// Per-product Sage University learning paths (Intacct, X3, 300 People, Payroll
+// Advanced, …) with nested module groups, typed modules, per-path and overall
+// progress, and a consultant-entered ILT date that drives the 4-stage billable
+// readiness ladder: Pre-supervised → Supervised-billable → ILT complete →
+// Certified. Mirrors SCHEMA.sql (training_paths / training_modules /
+// training_status) and HANDOFF §3 + §4.
 
-/** Scheduling shape of a Sage U ILT session. */
+/** A Sage product a consultant can train and certify on. */
+export type ProductId =
+  | 'intacct'
+  | 'x3'
+  | '300people'
+  | '200evo'
+  | 'pastel'
+  | 'payroll'
+
+/** Catalog entry for a Sage product (drives the product selector + certs). */
+export interface Product {
+  id: ProductId
+  name: string
+  /** The certification a consultant earns on this product. */
+  cert: string
+  /** The instructor-led course title. */
+  course: string
+  /** Approximate ILT course hours. */
+  hours: number
+}
+
+/** The kind of a learning-path module — drives its icon + badge. */
+export type ModuleType =
+  | 'video'
+  | 'ilt'
+  | 'assessment'
+  | 'exam'
+  | 'link'
+  | 'job'
+  | 'stage'
+
+/** Badge colour token (matches the UI Badge component's colour set). */
+export type TrainingBadgeColor =
+  | 'red'
+  | 'blue'
+  | 'green'
+  | 'amber'
+  | 'pink'
+  | 'grey'
+
+/** Presentation metadata for a module type (icon + label + badge colour). */
+export interface ModuleTypeMeta {
+  label: string
+  /** Badge colour token used by the UI Badge component. */
+  color: TrainingBadgeColor
+  /** Single-glyph icon shown beside the module. */
+  icon: string
+}
+
+/** Required / recommended emphasis tag on a module. */
+export type ModuleTag = 'required' | 'recommended'
+
+/** A single learning module within a path group. */
+export interface TrainingModule {
+  /** Module title. */
+  name: string
+  type: ModuleType
+  /** Optional supporting description. */
+  desc?: string
+  /** Required vs recommended emphasis, if any. */
+  tag?: ModuleTag
+  /**
+   * "Select the option that applies" choice marker (e.g. 'a' / 'b') used where
+   * a group offers mutually-relevant alternatives in the prototype.
+   */
+  choice?: string
+}
+
+/** A labelled group of modules within a learning path. */
+export interface TrainingGroup {
+  label: string
+  /** Optional note shown under the group label (e.g. "Select the option…"). */
+  note?: string
+  mods: TrainingModule[]
+}
+
+/** A learning path for a product (e.g. "Sage Intacct Implementer"). */
+export interface TrainingPath {
+  id: string
+  name: string
+  /** Optional short tag (e.g. "Core path", "South Africa only"). */
+  tag?: string
+  /** Optional path-level note / prerequisites. */
+  note?: string
+  groups: TrainingGroup[]
+}
+
+/** The certification track a consultant is working toward. */
+export type CertPath = 'implementation'
+
+/** Scheduling shape of a Sage U ILT session (legacy session catalogue). */
 export type IltSessionFormat = 'fullday' | 'spread'
 
-/** A bookable Sage University instructor-led training session. */
+/** A bookable Sage University instructor-led training session (reference data). */
 export interface IltSession {
   id: string
   course: string
@@ -399,25 +492,43 @@ export interface IltSession {
   seats_note: string
 }
 
-/** The certification track a consultant is working toward. */
-export type CertPath = 'implementation'
-
-/** One junior consultant's enrolment / progress against the tracker. */
+/**
+ * One junior consultant's enrolment / progress against the tracker. Maps to the
+ * SCHEMA.sql `training_status` row plus per-module `training_progress`.
+ */
 export interface TrainingEnrolment {
   employee_id: string
-  /** The ILT session they have chosen, or null if not yet selected. */
-  session_id: string | null
+  /** The product they are training on. */
+  product_id: ProductId
   cert_path: CertPath
+  /**
+   * The instructor-led training date the consultant enters (SCHEMA
+   * training_status.ilt_date). Canonical — there is no fixed session dropdown.
+   * Null until booked.
+   */
+  ilt_date: string | null
   /** Foundations done (Getting Started + console/provisioning) → supervised-billable. */
   getting_started_done: boolean
-  /** The 25-hour Implementing ILT completed. */
+  /** The instructor-led training completed. */
   ilt_done: boolean
   /** Certification assessment passed. */
   certified: boolean
+  /**
+   * Per-module completion keyed by `${product}:${pathId}:${moduleSlug}`. Mirrors
+   * the SCHEMA training_progress join in this mock phase.
+   */
+  modules_done: Record<string, boolean>
   updated_at: string
 }
 
-/** The three billable milestones, in order. */
+/**
+ * The 4-stage billable-readiness ladder (HANDOFF §4). Derived from a
+ * consultant's flags + entered ILT date — the single source of truth the
+ * dashboard pipeline reuses.
+ */
+export type BillableStage = 'pre' | 'supervised' | 'ilt' | 'certified'
+
+/** The three dated billable milestones, in order. */
 export type MilestoneKey = 'supervised' | 'ilt' | 'certified'
 
 export type MilestoneStatus = 'done' | 'on_track' | 'pending'
@@ -431,6 +542,15 @@ export interface BillableMilestone {
   status: MilestoneStatus
 }
 
+/** Progress roll-up for one learning path (modules done / total). */
+export interface PathProgress {
+  path_id: string
+  done: number
+  total: number
+  /** 0-100 percentage, rounded. */
+  percent: number
+}
+
 /** Admin roll-up row: one junior consultant's billable outlook. */
 export interface BillableSummaryRow {
   employee_id: string
@@ -438,11 +558,15 @@ export interface BillableSummaryRow {
   job_title: string | null
   avatar_initials: string
   avatar_color: string
-  session_id: string | null
-  session_label: string | null
+  product_id: ProductId
+  product_name: string
+  /** The consultant-entered ILT date (null if not yet set). */
+  ilt_date_entered: string | null
   supervised_date: string | null
   ilt_date: string | null
   certified_date: string | null
+  /** The derived 4-stage billable readiness stage. */
+  stage: BillableStage
   /** The next milestone not yet reached (or null when fully certified). */
   next_milestone: MilestoneKey | null
 }

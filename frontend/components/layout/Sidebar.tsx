@@ -93,7 +93,7 @@ export function Sidebar() {
     },
     {
       label: 'Development',
-      items: [{ href: '/training', icon: '🎓', label: 'Cert Tracker' }],
+      items: [{ href: '/training', icon: '🎓', label: 'Training' }],
     },
     {
       label: 'Finance',
