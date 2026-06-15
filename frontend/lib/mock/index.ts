@@ -25,6 +25,8 @@ import type {
   Message,
   AdminNotification,
   Document,
+  AddDocumentsInput,
+  UpdateDocumentInput,
   AdminOnboardingSummary,
   IltSession,
   TrainingEnrolment,
@@ -38,6 +40,7 @@ import {
   employees as seedEmployees,
   CURRENT_EMPLOYEE_ID,
   ONBOARDING_EMPLOYEE_ID,
+  ADMIN_EMPLOYEE_ID,
 } from './employees'
 import {
   onboardingPhases,
@@ -56,7 +59,7 @@ import {
   expenseOtherLines,
 } from './expenses'
 import { messages as seedMessages, adminNotifications } from './comms'
-import { documents } from './documents'
+import { documents as seedDocuments } from './documents'
 import {
   iltSessions,
   trainingEnrolments as seedEnrolments,
@@ -74,6 +77,7 @@ const taskStatusState: OnboardingTaskStatus[] = seedTaskStatuses.map((s) => ({
 }))
 const messageState: Message[] = seedMessages.map((m) => ({ ...m }))
 const enrolmentState: TrainingEnrolment[] = seedEnrolments.map((e) => ({ ...e }))
+const documentState: Document[] = seedDocuments.map((d) => ({ ...d }))
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
@@ -265,8 +269,15 @@ export function listAdminNotifications(): AdminNotification[] {
 }
 
 export function listDocuments(): Document[] {
-  return documents.filter((d) => d.is_active)
+  return documentState.filter((d) => d.is_active)
 }
+
+/**
+ * The file_type value used for SharePoint-link documents. The Documents screen
+ * keys its LINK badge (teal) and "SharePoint" size label off this sentinel, and
+ * treats `file_url` as the link target rather than a download.
+ */
+export const LINK_FILE_TYPE = 'link'
 
 /** Admin onboarding summary rows (one per onboarding/active employee). */
 export function getOnboardingSummary(): AdminOnboardingSummary[] {
@@ -449,6 +460,99 @@ export function setTrainingMilestone(
   return entry
 }
 
+// ── Documents (admin: add files / SharePoint links, replace versions) ─────────
+
+let docSeq = 0
+function nextDocId(): string {
+  // Stable, collision-proof ids beyond the seeded doc-0NN range.
+  docSeq += 1
+  return `doc-new-${Date.now()}-${docSeq}`
+}
+
+/**
+ * Add one or more documents to the library under a single category. Admin-only
+ * at the UI layer (gated by can(role,'uploadDocuments')); production MUST also
+ * enforce this in RLS. Two shapes:
+ *  - source 'upload': appends one Document per captured file (storage stubbed —
+ *    we keep the name, inferred file_type, and a size label only).
+ *  - source 'sharepoint': appends a single LINK document whose file_url is the
+ *    SharePoint URL and whose file_type is LINK_FILE_TYPE.
+ * Returns the newly created documents. Throws on empty/invalid input so the
+ * screen can surface a toast.
+ */
+export function addDocuments(input: AddDocumentsInput): Document[] {
+  const now = new Date().toISOString()
+  const created: Document[] = []
+
+  if (input.source === 'sharepoint') {
+    const url = input.sharepoint_url.trim()
+    if (!url) throw new Error('A SharePoint link is required.')
+    const doc: Document = {
+      id: nextDocId(),
+      title: input.link_name?.trim() || 'SharePoint document',
+      description: null,
+      category: input.category,
+      file_type: LINK_FILE_TYPE,
+      file_url: url,
+      file_size_bytes: null,
+      uploaded_by: ADMIN_EMPLOYEE_ID,
+      is_active: true,
+      created_at: now,
+      updated_at: now,
+    }
+    documentState.push(doc)
+    created.push(doc)
+    return created
+  }
+
+  if (!input.files.length) throw new Error('Add one or more files to upload.')
+  for (const file of input.files) {
+    const doc: Document = {
+      id: nextDocId(),
+      title: file.name,
+      description: null,
+      category: input.category,
+      file_type: file.file_type.toLowerCase(),
+      file_url: null,
+      file_size_bytes: null,
+      uploaded_by: ADMIN_EMPLOYEE_ID,
+      is_active: true,
+      created_at: now,
+      updated_at: now,
+    }
+    documentState.push(doc)
+    created.push(doc)
+  }
+  return created
+}
+
+/**
+ * Replace an existing document with a new version in place (same id/category).
+ * Either swaps in a new uploaded file (file_type + clears link), or converts it
+ * to a SharePoint LINK. Bumps updated_at. Throws on invalid input or unknown id.
+ */
+export function updateDocument(
+  documentId: string,
+  input: UpdateDocumentInput,
+): Document {
+  const doc = documentState.find((d) => d.id === documentId)
+  if (!doc) throw new Error(`Unknown document id: ${documentId}`)
+
+  if (input.source === 'sharepoint') {
+    const url = input.sharepoint_url?.trim()
+    if (!url) throw new Error('A SharePoint link is required.')
+    doc.file_type = LINK_FILE_TYPE
+    doc.file_url = url
+    doc.file_size_bytes = null
+  } else {
+    if (!input.file) throw new Error('Add the replacement file.')
+    doc.file_type = input.file.file_type.toLowerCase()
+    doc.file_url = null
+  }
+  doc.updated_at = new Date().toISOString()
+  return doc
+}
+
 // ── Test-only helper: restore all mutable state to the original seeds. ─────────
 // Not used by screens; lets unit tests run in isolation.
 export function __resetMockState(): void {
@@ -473,6 +577,12 @@ export function __resetMockState(): void {
     enrolmentState.length,
     ...seedEnrolments.map((e) => ({ ...e }))
   )
+  documentState.splice(
+    0,
+    documentState.length,
+    ...seedDocuments.map((d) => ({ ...d }))
+  )
+  docSeq = 0
 }
 
 // Presentation-only formatters (no data access) re-exported through the seam so

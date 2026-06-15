@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-export type BadgeColor = 'red' | 'blue' | 'green' | 'amber' | 'pink' | 'grey'
+export type BadgeColor = 'red' | 'blue' | 'green' | 'amber' | 'pink' | 'teal' | 'grey'
 
 const COLOR_CLASSES: Record<BadgeColor, string> = {
   red: 'bg-jera-red/15 text-jera-red border-jera-red/30',
@@ -8,6 +8,7 @@ const COLOR_CLASSES: Record<BadgeColor, string> = {
   green: 'bg-jera-green/15 text-jera-green border-jera-green/30',
   amber: 'bg-jera-amber/15 text-jera-amber border-jera-amber/30',
   pink: 'bg-jera-pink/15 text-jera-pink border-jera-pink/30',
+  teal: 'bg-jera-teal/15 text-jera-teal border-jera-teal/30',
   grey: 'bg-text-muted/15 text-text-secondary border-text-muted/30',
 }
 

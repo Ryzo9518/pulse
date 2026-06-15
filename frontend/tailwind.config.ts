@@ -17,6 +17,7 @@ const config: Config = {
           'pink-light': '#FBEDF7',
           green: '#2D8A56',
           amber: '#C4880C',
+          teal: '#0a7c8a',
         },
         surface: {
           DEFAULT: '#FAF9F7',
