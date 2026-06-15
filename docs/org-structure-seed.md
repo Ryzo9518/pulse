@@ -26,11 +26,11 @@ Raymond De Kock — Managing Director            [top]
 
 ## Pulse roles — CONFIRMED (Ryan, 2026-06-15)
 
-Admin set chosen by Ryan: **Ryan de Kock, Raymond De Kock, Ben Oosthuizen.** Everyone else is Manager (if they have direct reports) or Employee.
+**Ryan de Kock is the Owner / Super-Admin** (unrestricted, protected top authority). Other Admins: **Raymond De Kock, Ben Oosthuizen.** Everyone else is Manager (if they have direct reports) or Employee.
 
 | Person | Title | Role | Notes |
 |---|---|---|---|
-| Ryan de Kock | Business Development Manager | **Admin** | System owner |
+| Ryan de Kock | Business Development Manager | **Owner / Super-Admin** | Unrestricted access to everything. Protected top authority: only the Owner can grant/revoke Admin, and the Owner can never be demoted or locked out by another user. |
 | Raymond De Kock | Managing Director | **Admin** | |
 | Ben Oosthuizen | Finance Manager | **Admin** | Expense approvals / finance |
 | Charl Haasbroek | Operations Director | **Manager** | Manages Melicke; team oversight only — NO payroll/POPIA/contract |
@@ -44,7 +44,6 @@ Admin set chosen by Ryan: **Ryan de Kock, Raymond De Kock, Ben Oosthuizen.** Eve
 | Michael Olivier | Junior Consultant | Employee | |
 | Sikolwethu Dlamini | IT & Sage Junior Consultant | Employee | |
 | Jo-ann Witten | Receptionist | Employee | |
-| Annemarie Taute | Sage 300 Payroll Manager (Systems page only) | ??? | ⚠ Not on the main org chart — confirm if a staff member + who she reports to |
 
 > **Note on the manager boundary:** Pulse has only three roles. "Manager" deliberately *cannot* see payroll/POPIA/contracts (that's the whole point of the boundary). So anyone who must touch payroll/HR/personal data needs **Admin** — there is no middle "HR-only" role. If a finer-grained HR role is ever needed, that's a future capability-model change.
 
@@ -52,13 +51,14 @@ Admin set chosen by Ryan: **Ryan de Kock, Raymond De Kock, Ben Oosthuizen.** Eve
 
 | Product | People |
 |---|---|
-| Sage 300 HR & Payroll | Charl (Exec), Annemarie Taute (Manager), Melicke Olivier (Consultant) |
+| Sage 300 HR & Payroll | Charl (Exec), Melicke Olivier (Consultant) |
 | Sage X3 | Charl (Exec), Kevin (Manager), Ryan (Project mgr), Liberty, Michael, Sikolwethu, Werner (Developer), Riette, Ruth, + Developer (vacant) |
 | Sage Intacct | Charl (Exec), Kevin (Manager), Ryan (Project mgr), Leon, Michael, Sikolwethu, + Developer (vacant) |
 | iVend Retail | Leon (Consultant), + iVend Consultant (vacant) |
 
 ## Open questions for Ryan
-1. Confirm the Admin set (esp. whether Ryan is Admin vs Manager, and whether Melicke needs Admin for payroll/HR).
-2. Annemarie Taute — staff member? reporting line? (only appears on the Systems page).
-3. Vacancies (X3 Developer, iVend Consultant, Sage X3 Developer) — seed as open positions or omit until filled?
-4. Email addresses per person (needed for M365 identity matching at B1) — derive as `firstname@jera.co.za`, or provide the list?
+1. **Melicke Olivier** — Admin (for payroll/HR access) or Employee (current)? See the role-table flag.
+2. Vacancies (X3 Developer, iVend Consultant) — seed as open positions or omit until filled?
+3. Email addresses per person (needed for M365 identity matching at B1) — derive as `firstname@jera.co.za`, or provide the list?
+
+_Resolved: Admin set = Ryan (Owner/Super-Admin), Raymond, Ben. Annemarie Taute removed — no longer employed._
