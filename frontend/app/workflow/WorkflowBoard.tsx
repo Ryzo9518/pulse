@@ -70,7 +70,9 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
 
   // Re-read tasks whenever the role or version changes.
   const tasks = useMemo(() => listTasks(role), [role, version])
-  const phases = useMemo(() => listPhases(), [])
+  // Role-scope phases too (not just tasks): a manager must never see the
+  // HR-admin phase header. listPhases(role) drops it for managers.
+  const phases = useMemo(() => listPhases(role), [role])
 
   const statusOf = useCallback(
     (taskId: string): TaskStatus => getTaskStatus(taskId)?.status ?? 'pending',

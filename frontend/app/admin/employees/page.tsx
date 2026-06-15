@@ -29,8 +29,9 @@ import {
 } from '@/components/ui'
 import { useSession } from '@/lib/mock/session'
 import { can } from '@/lib/capabilities'
-import { listEmployees } from '@/lib/mock'
-import type { Employee, EmployeeStatus } from '@/types/database'
+import { listEmployees, listTeam } from '@/lib/mock'
+import { rosterColumnKeys } from '@/lib/roster'
+import type { Employee, EmployeeStatus, UserRole } from '@/types/database'
 
 const STATUS_COLOR: Record<EmployeeStatus, BadgeColor> = {
   active: 'green',
@@ -38,6 +39,12 @@ const STATUS_COLOR: Record<EmployeeStatus, BadgeColor> = {
   probation: 'amber',
   suspended: 'amber',
   terminated: 'red',
+}
+
+const ROLE_BADGE: Record<UserRole, { color: BadgeColor; label: string }> = {
+  admin: { color: 'red', label: 'Admin' },
+  manager: { color: 'blue', label: 'Manager' },
+  employee: { color: 'grey', label: 'Employee' },
 }
 
 function statusLabel(status: EmployeeStatus): string {
@@ -67,54 +74,50 @@ export default function AdminEmployeesPage() {
   // Admin sees everyone; manager sees only their direct team.
   const employees = canSeePersonal
     ? listEmployees()
-    : listEmployees().filter((e) => e.manager_id === currentEmployee?.id)
+    : listTeam(currentEmployee?.id ?? '')
 
-  const nameColumn: DataTableColumn<Employee> = {
-    key: 'name',
-    header: 'Employee',
-    render: (e) => (
-      <div className="flex items-center gap-3">
-        <Avatar
-          initials={e.avatar_initials}
-          color={e.avatar_color}
-          label={e.display_name}
-          size="sm"
-        />
-        <div className="min-w-0">
-          <div className="font-semibold text-text">{e.display_name}</div>
-          <div className="text-[11px] text-text-muted">{e.email}</div>
+  // All available columns, keyed. The viewer's allowed set is decided by the
+  // pure rosterColumnKeys() above, so the admin-only columns (role/phone/Notify)
+  // can never render for a manager.
+  const columnsByKey: Record<string, DataTableColumn<Employee>> = {
+    name: {
+      key: 'name',
+      header: 'Employee',
+      render: (e) => (
+        <div className="flex items-center gap-3">
+          <Avatar
+            initials={e.avatar_initials}
+            color={e.avatar_color}
+            label={e.display_name}
+            size="sm"
+          />
+          <div className="min-w-0">
+            <div className="font-semibold text-text">{e.display_name}</div>
+            <div className="text-[11px] text-text-muted">{e.email}</div>
+          </div>
         </div>
-      </div>
-    ),
-  }
-
-  const departmentColumn: DataTableColumn<Employee> = {
-    key: 'department',
-    header: 'Department',
-    render: (e) => e.department ?? '—',
-  }
-
-  const statusColumn: DataTableColumn<Employee> = {
-    key: 'status',
-    header: 'Status',
-    render: (e) => (
-      <Badge color={STATUS_COLOR[e.status]}>{statusLabel(e.status)}</Badge>
-    ),
-  }
-
-  // Role, phone, and the Notify action are admin-only — phone is POPIA personal
-  // data and must never reach a manager.
-  const adminColumns: DataTableColumn<Employee>[] = [
-    {
+      ),
+    },
+    role: {
       key: 'role',
       header: 'Role',
       render: (e) => (
-        <Badge color={e.role === 'admin' ? 'red' : 'grey'}>
-          {e.role === 'admin' ? 'Admin' : 'Employee'}
-        </Badge>
+        <Badge color={ROLE_BADGE[e.role].color}>{ROLE_BADGE[e.role].label}</Badge>
       ),
     },
-    {
+    department: {
+      key: 'department',
+      header: 'Department',
+      render: (e) => e.department ?? '—',
+    },
+    status: {
+      key: 'status',
+      header: 'Status',
+      render: (e) => (
+        <Badge color={STATUS_COLOR[e.status]}>{statusLabel(e.status)}</Badge>
+      ),
+    },
+    phone: {
       key: 'phone',
       header: 'Phone',
       render: (e) => (
@@ -123,7 +126,7 @@ export default function AdminEmployeesPage() {
         </span>
       ),
     },
-    {
+    actions: {
       key: 'actions',
       header: '',
       align: 'right',
@@ -143,11 +146,11 @@ export default function AdminEmployeesPage() {
         </Button>
       ),
     },
-  ]
+  }
 
-  const columns: DataTableColumn<Employee>[] = canSeePersonal
-    ? [nameColumn, adminColumns[0], departmentColumn, statusColumn, adminColumns[1], adminColumns[2]]
-    : [nameColumn, departmentColumn, statusColumn]
+  const columns: DataTableColumn<Employee>[] = rosterColumnKeys(
+    canSeePersonal,
+  ).map((key) => columnsByKey[key])
 
   return (
     <AppShell>

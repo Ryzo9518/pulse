@@ -17,7 +17,7 @@ export function RoleSwitch() {
   return (
     <div
       className="inline-flex items-center gap-2 rounded-btn border border-dashed border-surface-border bg-surface-card px-2 py-1 text-xs text-text-muted shadow-card"
-      title="Dev only — switch between the employee and admin views"
+      title="Dev only — switch between the employee, manager, and admin views"
     >
       <span aria-hidden className="text-[13px]">
         🔧

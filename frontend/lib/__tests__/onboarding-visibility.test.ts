@@ -27,12 +27,19 @@ describe('listTasks(role) onboarding visibility', () => {
       false,
     )
   })
+
+  it('the employee STILL sees their own contract task (manager_hidden must not leak into the employee projection)', () => {
+    // t7 is visibility 'both' and only hidden from managers; the onboarding
+    // employee must still see it.
+    expect(listTasks('employee').some((t) => t.id === 't7')).toBe(true)
+  })
 })
 
 describe('listPhases(role) onboarding visibility', () => {
   it('hides the HR-admin phase from a manager only', () => {
     expect(listPhases('manager').some((p) => p.id === 'hr')).toBe(false)
     expect(listPhases('admin').some((p) => p.id === 'hr')).toBe(true)
+    expect(listPhases('employee').some((p) => p.id === 'hr')).toBe(true)
     expect(listPhases().some((p) => p.id === 'hr')).toBe(true)
   })
 })

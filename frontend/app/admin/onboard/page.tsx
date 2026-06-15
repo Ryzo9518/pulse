@@ -197,8 +197,8 @@ export default function AdminOnboardPage() {
   return (
     <AppShell>
       <PageHeader
-        eyebrow="Admin"
-        title="Onboard New Employee"
+        eyebrow={role === 'admin' ? 'Admin' : 'My team'}
+        title={role === 'admin' ? 'Onboard New Employee' : 'Schedule Onboarding'}
         subtitle="Create a new employee record and kick off onboarding"
       />
       <div className="px-10 py-8">

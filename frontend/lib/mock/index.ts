@@ -92,6 +92,17 @@ export function getEmployee(id: string): Employee | undefined {
   return employeeState.find((e) => e.id === id)
 }
 
+/**
+ * Employees who report directly to `managerId` — a manager's team. Used by the
+ * manager roster ("My Team"). An empty/unknown id returns [] (never the whole
+ * roster), so a missing session can't widen the scope. The backend phase
+ * replaces this with an RLS-scoped query.
+ */
+export function listTeam(managerId: string): Employee[] {
+  if (!managerId) return []
+  return employeeState.filter((e) => e.manager_id === managerId)
+}
+
 // ── Training / certification (Sage Intacct billable-readiness tracker) ────────
 
 /** All bookable Sage U instructor-led sessions. */

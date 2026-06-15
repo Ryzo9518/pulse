@@ -19,7 +19,22 @@ import {
 } from 'react'
 
 import type { Employee, UserRole } from '@/types/database'
-import { getCurrentEmployee } from '@/lib/mock'
+import { getCurrentEmployee, getEmployee } from '@/lib/mock'
+
+// Dev-only: which mock identity backs each view role. Team scoping reads
+// currentEmployee.id, so the manager view must be a lead with real direct
+// reports — otherwise "My Team" is always empty. Employee = the seeded
+// onboarding hire (drives the policy gate); admin keeps the default identity
+// (admin screens are identity-independent). Production resolves identity + role
+// together from the authenticated M365 user; this swap is purely a dev affordance.
+const MANAGER_PERSONA_ID = 'emp-001'
+
+function personaForRole(role: UserRole): Employee | null {
+  if (role === 'manager') {
+    return getEmployee(MANAGER_PERSONA_ID) ?? getCurrentEmployee()
+  }
+  return getCurrentEmployee()
+}
 
 export interface MockSessionValue {
   /** The mock "logged-in" employee (defaults to the seeded onboarding employee). */
@@ -58,6 +73,9 @@ export function MockSessionProvider({ children }: MockSessionProviderProps) {
 
   const setRole = useCallback((next: UserRole) => {
     setRoleState(next)
+    // Swap the backing mock identity so role-scoped screens (e.g. the manager's
+    // team roster) have realistic data to render in this mock phase.
+    setCurrentEmployee(personaForRole(next))
   }, [])
 
   const signOut = useCallback(() => {
