@@ -158,17 +158,34 @@ export function getBillableSummary(): BillableSummaryRow[] {
   })
 }
 
-export function listPhases(): OnboardingPhase[] {
+/**
+ * List onboarding phases visible to the given role.
+ * - 'manager' never sees the HR-admin phase (tax/banking/payroll/medical — POPIA
+ *   + payroll). 'employee' and 'admin' (and the default no-arg call) see all
+ *   phases; phase-level employee/admin filtering happens via task visibility.
+ */
+export function listPhases(role?: UserRole): OnboardingPhase[] {
+  if (role === 'manager') {
+    return onboardingPhases.filter((p) => p.id !== 'hr')
+  }
   return onboardingPhases
 }
 
 /**
  * List onboarding tasks visible to the given role.
  * - 'employee' sees 'employee' + 'both' (NOT 'admin'-only tasks).
+ * - 'manager' sees work tasks for oversight, but NEVER the HR-admin phase
+ *   (payroll/tax/banking/medical) or `manager_hidden` tasks (the employment
+ *   contract / NDA). See HANDOFF §2 — enforce in RLS too, not just the UI.
  * - 'admin' sees everything.
  */
 export function listTasks(role: UserRole): OnboardingTask[] {
   if (role === 'admin') return onboardingTasks
+  if (role === 'manager') {
+    return onboardingTasks.filter(
+      (t) => t.phase_id !== 'hr' && !t.manager_hidden,
+    )
+  }
   return onboardingTasks.filter((t) => t.visibility !== 'admin')
 }
 

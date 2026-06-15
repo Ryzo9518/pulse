@@ -3,15 +3,17 @@
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 // The persistent 260px dark navigation rail. Mirrors the prototype's
 // <aside id="sidebar"> block (docs/pulse_v4_prototype.html ~499-560) and the
-// nav structure in docs/FEATURE_SPEC.md "Sidebar Navigation". The Admin section
-// only renders when the active view role is 'admin'. Active highlight follows
-// the current route via usePathname (sub-routes highlight their parent).
+// nav structure in docs/FEATURE_SPEC.md "Sidebar Navigation". Managers get a
+// "My team" section; admins get the full "Admin" section — both keyed off the
+// active view role. Active highlight follows the current route via usePathname
+// (sub-routes highlight their parent).
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 
 import { Avatar } from '@/components/ui'
 import { useSession } from '@/lib/mock/session'
+import { roleLabel } from '@/lib/capabilities'
 import {
   getPolicyAckState,
   listMessages,
@@ -114,6 +116,17 @@ export function Sidebar() {
     },
   ]
 
+  // Manager: work-related team oversight only (no payroll/POPIA/contract).
+  if (role === 'manager') {
+    sections.push({
+      label: 'My team',
+      items: [
+        { href: '/admin/employees', icon: '👥', label: 'My Team' },
+        { href: '/admin/onboard', icon: '➕', label: 'Schedule Onboarding' },
+      ],
+    })
+  }
+
   if (role === 'admin') {
     sections.push({
       label: 'Admin',
@@ -126,7 +139,9 @@ export function Sidebar() {
     })
   }
 
-  const roleLabel = role === 'admin' ? 'Administrator' : currentEmployee?.job_title
+  // Employees show their job title; manager/admin show the active view role.
+  const userCardLabel =
+    role === 'employee' ? currentEmployee?.job_title : roleLabel(role)
 
   function handleSignOut() {
     signOut()
@@ -212,7 +227,7 @@ export function Sidebar() {
                 {currentEmployee?.display_name ?? 'Signed out'}
               </div>
               <div className="truncate text-[11px] text-white/40">
-                {roleLabel ?? ''}
+                {userCardLabel ?? ''}
               </div>
             </div>
           </div>

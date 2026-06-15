@@ -2,13 +2,14 @@
 
 // ── RoleSwitch ───────────────────────────────────────────────────────────────
 // Dev-only affordance (NOT a product feature) that flips the active view between
-// the employee and admin experiences. Lets Ryan see both without a real login
-// (plan R3). Styled subtly with a 🔧 marker so it reads as a dev tool.
+// the employee, manager, and admin experiences. Lets Ryan see all three without
+// a real login (plan R3). Styled subtly with a 🔧 marker so it reads as a dev
+// tool. Production resolves the role from the authenticated M365 identity.
 
 import type { UserRole } from '@/types/database'
 import { useSession } from '@/lib/mock/session'
 
-const ROLES: UserRole[] = ['employee', 'admin']
+const ROLES: UserRole[] = ['employee', 'manager', 'admin']
 
 export function RoleSwitch() {
   const { role, setRole } = useSession()

@@ -26,13 +26,14 @@ export interface MockSessionValue {
   currentEmployee: Employee | null
   /**
    * The active view role. Defaults to 'employee'. The dev RoleSwitch flips this
-   * so Ryan can see the admin experience without a separate account. Independent
-   * of `currentEmployee.role` on purpose — it controls which view is rendered.
+   * so Ryan can see the manager and admin experiences without a separate
+   * account. Independent of `currentEmployee.role` on purpose — it controls
+   * which view is rendered.
    */
   role: UserRole
   /** True while a mock session is active (used by the root route redirect). */
   isAuthenticated: boolean
-  /** Flip the active view role between 'employee' and 'admin'. */
+  /** Flip the active view role between 'employee', 'manager', and 'admin'. */
   setRole: (role: UserRole) => void
   /** Clear the session. Callers route to /login afterward. */
   signOut: () => void

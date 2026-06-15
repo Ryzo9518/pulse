@@ -64,8 +64,11 @@ export function isGatedRoute(targetPath: string): boolean {
 }
 
 export interface ShouldRedirectArgs {
-  /** Active view role from the session. Admins are never gated. */
-  role: 'admin' | 'employee'
+  /**
+   * Active view role from the session. Only an onboarding *employee* is gated;
+   * managers and admins are never redirected (they are not the onboarding user).
+   */
+  role: 'admin' | 'manager' | 'employee'
   /** The authoritative completion flag (currentEmployee.policies_completed). */
   policiesCompleted: boolean
   /** Count of acknowledged policies (from getPolicyAckState().acknowledgedCount). */
@@ -79,7 +82,7 @@ export interface ShouldRedirectArgs {
 /**
  * The gate decision. Returns `true` (caller should redirect to /policies) ONLY
  * when ALL of the following hold:
- *   1. role is 'employee'                     — admins are NEVER redirected
+ *   1. role is 'employee'                     — managers/admins are NEVER redirected
  *   2. policies are NOT yet complete          — completed flag false AND
  *                                               acknowledgedCount < totalPolicies
  *   3. targetPath is a gated onboarding route — see GATED_ONBOARDING_ROUTES
@@ -99,7 +102,7 @@ export function shouldRedirectToPolicies(args: ShouldRedirectArgs): boolean {
     targetPath,
   } = args
 
-  // Admins bypass the gate entirely.
+  // Only an onboarding employee is gated; managers and admins bypass entirely.
   if (role !== 'employee') return false
 
   // Gate only applies to the protected onboarding sections.

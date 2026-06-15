@@ -26,6 +26,7 @@ import {
   type SelectOption,
 } from '@/components/ui'
 import { useSession } from '@/lib/mock/session'
+import { can } from '@/lib/capabilities'
 import { listEmployees } from '@/lib/mock'
 import { AVATAR_COLOURS } from '@/lib/constants'
 import type { Employee } from '@/types/database'
@@ -85,13 +86,16 @@ export default function AdminOnboardPage() {
   const router = useRouter()
   const { toast } = useToast()
 
-  // ── Admin-only guard ──
-  // Redirect non-admins away and render nothing while the redirect resolves.
+  // ── Capability guard ──
+  // Managers and admins may schedule onboarding; everyone else is redirected and
+  // sees nothing while the redirect resolves. (A manager may schedule but never
+  // sees the contract / HR-admin tasks — that is enforced in the workflow view.)
+  const canSchedule = can(role, 'scheduleOnboarding')
   useEffect(() => {
-    if (role !== 'admin') {
+    if (!canSchedule) {
       router.replace('/dashboard')
     }
-  }, [role, router])
+  }, [canSchedule, router])
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [errors, setErrors] = useState<FormErrors>({})
@@ -113,7 +117,7 @@ export default function AdminOnboardPage() {
     [],
   )
 
-  if (role !== 'admin') {
+  if (!canSchedule) {
     return null
   }
 
