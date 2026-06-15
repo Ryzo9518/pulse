@@ -7,6 +7,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge, Button, Card, ProgressBar, useToast } from '@/components/ui'
 import { TOTAL_FORMS } from '@/lib/constants'
+import { getPolicyAckState } from '@/lib/mock'
 import type { FormKey } from '@/types/database'
 
 import { EmergencyForm } from './EmergencyForm'
@@ -35,16 +36,30 @@ export default function FormsPage() {
   const router = useRouter()
   const { toast } = useToast()
 
-  // No form-completion accessor exists in @/lib/mock, so completion is tracked
-  // in local component state for this mock phase (per Unit 8 instructions).
-  const [completed, setCompleted] = useState<Record<FormKey, boolean>>({
-    personal: false,
-    emergency: false,
-    tax: false,
-    policies: false,
-    goals: false,
-  })
+  // The fillable forms track completion in local component state for this mock
+  // phase. The Policy Acknowledgement card is NOT local state — it is derived
+  // from the policy gate (getPolicyAckState().allAcknowledged) so it auto-
+  // completes once every policy is acknowledged on the Policies screen and can
+  // never drift from the gate.
+  const [localCompleted, setLocalCompleted] = useState<Record<FormKey, boolean>>(
+    {
+      personal: false,
+      emergency: false,
+      tax: false,
+      policies: false, // overlaid by the ack state below — never set directly
+      goals: false,
+    },
+  )
   const [active, setActive] = useState<ActiveView>('overview')
+
+  const policiesComplete = getPolicyAckState().allAcknowledged
+
+  // Effective completion: policies always reflects the gate, everything else is
+  // local state.
+  const completed = useMemo<Record<FormKey, boolean>>(
+    () => ({ ...localCompleted, policies: policiesComplete }),
+    [localCompleted, policiesComplete],
+  )
 
   const doneCount = useMemo(
     () => Object.values(completed).filter(Boolean).length,
@@ -56,23 +71,27 @@ export default function FormsPage() {
 
   const completeForm = useCallback(
     (key: FormKey) => {
-      setCompleted((prev) => {
+      setLocalCompleted((prev) => {
         const next = { ...prev, [key]: true }
-        const allDone = Object.values(next).every(Boolean)
+        // Policies completion comes from the gate, not local state — overlay it
+        // when deciding whether every form is now done.
+        const effective = { ...next, policies: policiesComplete }
+        const doneNow = Object.values(effective).filter(Boolean).length
+        const allDone = doneNow === TOTAL_FORMS
         toast({
           title: allDone
             ? '🎉 All onboarding forms complete!'
             : `${getFormMeta(key).title} saved`,
           message: allDone
             ? 'Nice work — every form is done.'
-            : `${Object.values(next).filter(Boolean).length} of ${TOTAL_FORMS} forms completed`,
+            : `${doneNow} of ${TOTAL_FORMS} forms completed`,
           variant: 'success',
         })
         return next
       })
       setActive('overview')
     },
-    [toast],
+    [toast, policiesComplete],
   )
 
   const openForm = useCallback(

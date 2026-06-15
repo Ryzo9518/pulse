@@ -73,7 +73,12 @@ export interface ShouldRedirectArgs {
   policiesCompleted: boolean
   /** Count of acknowledged policies (from getPolicyAckState().acknowledgedCount). */
   acknowledgedCount: number
-  /** Total policies required (getPolicyAckState().total — 20). */
+  /**
+   * Total policies required — the DYNAMIC count of seeded/created policies, from
+   * getPolicyAckState().total (= listPolicies().length). Never a hardcoded
+   * constant: passing a stale fixed total would let the gate lift early whenever
+   * a policy is added. Callers MUST pass the dynamic count.
+   */
   totalPolicies: number
   /** The onboarding route the user is trying to navigate to. */
   targetPath: string
