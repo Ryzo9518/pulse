@@ -28,8 +28,12 @@ import type {
   AdminOnboardingSummary,
   IltSession,
   TrainingEnrolment,
+  TrainingPath,
   BillableMilestone,
   BillableSummaryRow,
+  PathProgress,
+  Product,
+  ProductId,
   MilestoneKey,
   Certification,
   CertClass,
@@ -64,9 +68,13 @@ import {
   iltSessions,
   trainingEnrolments as seedEnrolments,
   computeMilestones,
+  computeOverallProgress,
+  computePathProgress,
   nextMilestone,
-  findSession,
-  formatSessionLabel,
+  billableStage,
+  pathsFor,
+  productById,
+  PRODUCTS,
 } from './training'
 import { certifications as seedCerts } from './certifications'
 
@@ -80,7 +88,10 @@ const taskStatusState: OnboardingTaskStatus[] = seedTaskStatuses.map((s) => ({
   ...s,
 }))
 const messageState: Message[] = seedMessages.map((m) => ({ ...m }))
-const enrolmentState: TrainingEnrolment[] = seedEnrolments.map((e) => ({ ...e }))
+const enrolmentState: TrainingEnrolment[] = seedEnrolments.map((e) => ({
+  ...e,
+  modules_done: { ...e.modules_done },
+}))
 const certState: Certification[] = seedCerts.map((c) => ({ ...c }))
 
 // ── Reads ────────────────────────────────────────────────────────────────────
@@ -111,9 +122,24 @@ export function listTeam(managerId: string): Employee[] {
   return employeeState.filter((e) => e.manager_id === managerId)
 }
 
-// ── Training / certification (Sage Intacct billable-readiness tracker) ────────
+// ── Training (multi-product Sage U learning paths + billable readiness) ────────
 
-/** All bookable Sage U instructor-led sessions. */
+/** The Sage product catalogue (powers the product selector + cert names). */
+export function listProducts(): Product[] {
+  return PRODUCTS
+}
+
+/** A single product by id (falls back to the first product if unknown). */
+export function getProduct(id: ProductId): Product {
+  return productById(id)
+}
+
+/** The learning paths for a product (curated where available, else generic). */
+export function getProductPaths(product: ProductId): TrainingPath[] {
+  return pathsFor(product)
+}
+
+/** All bookable Sage U instructor-led sessions (reference data). */
 export function listIltSessions(): IltSession[] {
   return iltSessions
 }
@@ -132,6 +158,25 @@ export function getEmployeeMilestones(employeeId: string): BillableMilestone[] {
   return computeMilestones(employee, getTrainingEnrolment(employeeId))
 }
 
+/** Per-path progress for an employee against the product they are training on. */
+export function getEmployeePathProgress(employeeId: string): PathProgress[] {
+  const enrolment = getTrainingEnrolment(employeeId)
+  const product = enrolment?.product_id ?? 'intacct'
+  const modulesDone = enrolment?.modules_done ?? {}
+  return pathsFor(product).map((p) => computePathProgress(product, p, modulesDone))
+}
+
+/** Overall modules done / total for an employee across every path. */
+export function getEmployeeOverallProgress(employeeId: string): {
+  done: number
+  total: number
+  percent: number
+} {
+  const enrolment = getTrainingEnrolment(employeeId)
+  const product = enrolment?.product_id ?? 'intacct'
+  return computeOverallProgress(product, enrolment?.modules_done ?? {})
+}
+
 /**
  * Which employees the tracker treats as junior consultants: anyone with a
  * training enrolment, plus onboarding/probation staff in the Consulting team
@@ -145,24 +190,30 @@ function isJuniorConsultant(e: Employee): boolean {
   )
 }
 
-/** Admin roll-up: every junior consultant's projected billable dates. */
+/** Admin roll-up: every junior consultant's product + projected billable dates. */
 export function getBillableSummary(): BillableSummaryRow[] {
   const rows = employeeState.filter(isJuniorConsultant).map((e) => {
     const enrolment = getTrainingEnrolment(e.id)
+    const product = productById(enrolment?.product_id ?? 'intacct')
     const milestones = computeMilestones(e, enrolment)
-    const byKey = (k: MilestoneKey) => milestones.find((m) => m.key === k)?.date ?? null
-    const session = findSession(enrolment?.session_id ?? null)
+    const stage = billableStage({
+      getting_started_done: Boolean(enrolment?.getting_started_done),
+      ilt_done: Boolean(enrolment?.ilt_done),
+      certified: Boolean(enrolment?.certified),
+    })
     return {
       employee_id: e.id,
       display_name: e.display_name,
       job_title: e.job_title,
       avatar_initials: e.avatar_initials,
       avatar_color: e.avatar_color,
-      session_id: enrolment?.session_id ?? null,
-      session_label: session ? formatSessionLabel(session) : null,
-      supervised_date: byKey('supervised'),
-      ilt_date: byKey('ilt'),
-      certified_date: byKey('certified'),
+      product_id: product.id,
+      product_name: product.name,
+      ilt_date_entered: enrolment?.ilt_date ?? null,
+      supervised_date: milestones.find((m) => m.key === 'supervised')?.date ?? null,
+      ilt_date: milestones.find((m) => m.key === 'ilt')?.date ?? null,
+      certified_date: milestones.find((m) => m.key === 'certified')?.date ?? null,
+      stage,
       next_milestone: nextMilestone(milestones),
     }
   })
@@ -565,56 +616,73 @@ export function postMessage(
   return message
 }
 
-/**
- * Set (or change) the ILT session a consultant is booked on. Creates an
- * enrolment if the consultant does not have one yet. Pass null to clear.
- */
-export function setTrainingSession(
-  employeeId: string,
-  sessionId: string | null,
-): TrainingEnrolment {
+/** Find or lazily create a consultant's enrolment (default Intacct, nothing done). */
+function ensureEnrolment(employeeId: string): TrainingEnrolment {
   let entry = enrolmentState.find((e) => e.employee_id === employeeId)
-  const now = new Date().toISOString()
   if (!entry) {
     entry = {
       employee_id: employeeId,
-      session_id: sessionId,
+      product_id: 'intacct',
       cert_path: 'implementation',
+      ilt_date: null,
       getting_started_done: false,
       ilt_done: false,
       certified: false,
-      updated_at: now,
+      modules_done: {},
+      updated_at: new Date().toISOString(),
     }
     enrolmentState.push(entry)
-  } else {
-    entry.session_id = sessionId
-    entry.updated_at = now
   }
   return entry
 }
 
-/** Toggle one of a consultant's progress milestones. Creates an enrolment if needed. */
+/**
+ * Set the consultant-entered instructor-led training date (SCHEMA
+ * training_status.ilt_date). Canonical input that drives the billable ladder.
+ * Pass null/empty to clear. Creates an enrolment if needed.
+ */
+export function setTrainingIltDate(
+  employeeId: string,
+  iltDate: string | null,
+): TrainingEnrolment {
+  const entry = ensureEnrolment(employeeId)
+  entry.ilt_date = iltDate || null
+  entry.updated_at = new Date().toISOString()
+  return entry
+}
+
+/** Switch the product a consultant is training on. Creates an enrolment if needed. */
+export function setTrainingProduct(
+  employeeId: string,
+  productId: ProductId,
+): TrainingEnrolment {
+  const entry = ensureEnrolment(employeeId)
+  entry.product_id = productId
+  entry.updated_at = new Date().toISOString()
+  return entry
+}
+
+/** Toggle one of a consultant's billable-readiness flags. Creates an enrolment if needed. */
 export function setTrainingMilestone(
   employeeId: string,
   key: 'getting_started_done' | 'ilt_done' | 'certified',
   value: boolean,
 ): TrainingEnrolment {
-  let entry = enrolmentState.find((e) => e.employee_id === employeeId)
-  const now = new Date().toISOString()
-  if (!entry) {
-    entry = {
-      employee_id: employeeId,
-      session_id: null,
-      cert_path: 'implementation',
-      getting_started_done: false,
-      ilt_done: false,
-      certified: false,
-      updated_at: now,
-    }
-    enrolmentState.push(entry)
-  }
+  const entry = ensureEnrolment(employeeId)
   entry[key] = value
-  entry.updated_at = now
+  entry.updated_at = new Date().toISOString()
+  return entry
+}
+
+/** Toggle completion of one learning module (by its module key). */
+export function setTrainingModule(
+  employeeId: string,
+  moduleKeyValue: string,
+  value: boolean,
+): TrainingEnrolment {
+  const entry = ensureEnrolment(employeeId)
+  entry.modules_done = { ...entry.modules_done, [moduleKeyValue]: value }
+  entry.updated_at = new Date().toISOString()
   return entry
 }
 
@@ -708,14 +776,23 @@ export function __resetMockState(): void {
   enrolmentState.splice(
     0,
     enrolmentState.length,
-    ...seedEnrolments.map((e) => ({ ...e }))
+    ...seedEnrolments.map((e) => ({ ...e, modules_done: { ...e.modules_done } }))
   )
   certState.splice(0, certState.length, ...seedCerts.map((c) => ({ ...c })))
 }
 
-// Presentation-only formatters (no data access) re-exported through the seam so
-// screens still import everything from '@/lib/mock'.
-export { formatDate, formatDateRange, formatSessionLabel } from './training'
+// Presentation-only formatters + pure helpers (no data access) re-exported
+// through the seam so screens still import everything from '@/lib/mock'.
+export {
+  formatDate,
+  formatDateRange,
+  formatSessionLabel,
+  billableStage,
+  moduleKey,
+  moduleTypeMeta,
+  MODULE_TYPES,
+  computePathProgress,
+} from './training'
 
 // Certification pure helpers + taxonomy, re-exported through the seam so screens
 // import everything cert-related from '@/lib/mock'.

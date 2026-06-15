@@ -96,7 +96,7 @@ export function Sidebar() {
     {
       label: 'Development',
       items: [
-        { href: '/training', icon: '🎓', label: 'Cert Tracker' },
+        { href: '/training', icon: '🎓', label: 'Training' },
         { href: '/certifications', icon: '🏅', label: 'Certifications' },
       ],
     },
