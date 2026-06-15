@@ -10,9 +10,9 @@ import {
   acknowledgePolicy,
   getCurrentEmployee,
   getPolicyAckState,
+  getTotalPolicies,
   listPolicies,
 } from '@/lib/mock'
-import { TOTAL_POLICIES } from '@/lib/constants'
 
 // ── Pure helper: the compliance gate decision (plan R4) ───────────────────────
 // These tests are written test-first: the gate is a compliance control, so its
@@ -130,14 +130,15 @@ describe('shouldRedirectToPolicies', () => {
 // Drives the real mutators so the helper's inputs are validated against the
 // actual ack/completed state the screen will feed it.
 
-describe('integration: acking all 20 lifts the gate', () => {
+describe('integration: acking all lifts the gate (dynamic total)', () => {
   beforeEach(() => {
     __resetMockState()
   })
 
-  it('acking all 20 sets policies_completed and the helper stops redirecting', () => {
+  it('acking all policies sets policies_completed and the helper stops redirecting', () => {
     const policies = listPolicies()
-    expect(policies).toHaveLength(TOTAL_POLICIES)
+    expect(policies).toHaveLength(getTotalPolicies())
+    expect(getTotalPolicies()).toBe(24)
 
     // Part-way through: gate is still up for a gated route.
     acknowledgePolicy(policies[0].id)
@@ -158,7 +159,7 @@ describe('integration: acking all 20 lifts the gate', () => {
     for (const p of policies) acknowledgePolicy(p.id)
 
     const full = getPolicyAckState()
-    expect(full.acknowledgedCount).toBe(TOTAL_POLICIES)
+    expect(full.acknowledgedCount).toBe(getTotalPolicies())
     expect(full.allAcknowledged).toBe(true)
     expect(getCurrentEmployee().policies_completed).toBe(true)
 
@@ -171,5 +172,26 @@ describe('integration: acking all 20 lifts the gate', () => {
         targetPath: '/workflow',
       })
     ).toBe(false)
+  })
+
+  it('blocks at 23/24: one short still redirects on a gated route', () => {
+    const policies = listPolicies()
+    // Acknowledge all but the last.
+    for (const p of policies.slice(0, -1)) acknowledgePolicy(p.id)
+
+    const state = getPolicyAckState()
+    expect(state.acknowledgedCount).toBe(23)
+    expect(state.total).toBe(24)
+    expect(state.allAcknowledged).toBe(false)
+
+    expect(
+      shouldRedirectToPolicies({
+        role: 'employee',
+        policiesCompleted: getCurrentEmployee().policies_completed,
+        acknowledgedCount: state.acknowledgedCount,
+        totalPolicies: state.total,
+        targetPath: '/workflow',
+      })
+    ).toBe(true)
   })
 })
