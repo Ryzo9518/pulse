@@ -105,6 +105,10 @@ const enrolmentState: TrainingEnrolment[] = seedEnrolments.map((e) => ({
 const documentState: Document[] = seedDocuments.map((d) => ({ ...d }))
 const aaCertState: AaRateCertificate[] = aaRateCertificates.map((c) => ({ ...c }))
 const certState: Certification[] = seedCerts.map((c) => ({ ...c }))
+// Per-task owner OVERRIDES set by an admin in this session (task_id -> employee
+// id, or null for explicitly unassigned). A task with no entry here falls back
+// to its seeded default_owner token. Mirrors the prototype's `taskOwner` map.
+const taskOwnerState = new Map<string, string | null>()
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
@@ -317,6 +321,45 @@ export function getOnboardingGenerationTaskTotal(): number {
 
 export function getTaskStatus(taskId: string): OnboardingTaskStatus | undefined {
   return taskStatusState.find((s) => s.task_id === taskId)
+}
+
+/**
+ * Maps a seeded `default_owner` token (e.g. 'siko', 'hr') to a real employee id,
+ * so the per-task owner <select> (which lists employees) can pre-select the
+ * seeded owner. 'hr' maps to the HR & Compliance employee; an unknown/`null`
+ * token resolves to null (unassigned / self-service). The backend phase drops
+ * this once `default_owner` is itself an employee id column.
+ */
+const DEFAULT_OWNER_TOKEN_TO_EMAIL: Record<string, string> = {
+  ryan: 'ryan@jera.co.za',
+  siko: 'sikod@jera.co.za',
+  raymond: 'raymond@jera.co.za',
+  joann: 'joann@jera.co.za',
+  hr: 'ben@jera.co.za',
+}
+
+function resolveDefaultOwnerId(token: string | null): string | null {
+  if (!token) return null
+  const email = DEFAULT_OWNER_TOKEN_TO_EMAIL[token]
+  if (!email) return null
+  return employeeState.find((e) => e.email === email)?.id ?? null
+}
+
+/**
+ * The effective owner employee id for an onboarding task: an in-session admin
+ * override if one exists (including an explicit null = unassigned), otherwise the
+ * task's seeded default owner resolved to an employee id. Returns null when the
+ * task has no owner (e.g. employee self-verification tasks).
+ */
+export function getTaskOwner(taskId: string): string | null {
+  if (taskOwnerState.has(taskId)) return taskOwnerState.get(taskId) ?? null
+  const task = onboardingTasks.find((t) => t.id === taskId)
+  return resolveDefaultOwnerId(task?.default_owner ?? null)
+}
+
+/** Employees an admin can assign as a task owner (the full roster). */
+export function listAssignableOwners(): Employee[] {
+  return employeeState
 }
 
 export function listPolicies(): HrPolicy[] {
@@ -643,6 +686,27 @@ export function setTaskStatus(
   }
 
   return entry
+}
+
+/**
+ * Assign (or clear) the owner of an onboarding task in this session. Admin-only
+ * at the UI layer (gated by can(role,'assignTaskOwners')); production MUST also
+ * enforce this in RLS. Pass an employee id to assign, or null to unassign. The
+ * override is stored separately from the seed so it survives re-reads and beats
+ * the task's seeded default_owner. In production this is also where the Microsoft
+ * 365 Graph assignment email fires (HANDOFF §3/§5) — here the screen toasts.
+ * Returns the resolved owner id (the value now in effect).
+ */
+export function setTaskOwner(
+  taskId: string,
+  ownerId: string | null,
+): string | null {
+  const normalized = ownerId || null
+  if (normalized && !employeeState.some((e) => e.id === normalized)) {
+    throw new Error(`Unknown employee id: ${normalized}`)
+  }
+  taskOwnerState.set(taskId, normalized)
+  return normalized
 }
 
 /** Append a chat/announcement message to a channel. */
@@ -983,6 +1047,7 @@ export function __resetMockState(): void {
     ...aaRateCertificates.map((c) => ({ ...c }))
   )
   certState.splice(0, certState.length, ...seedCerts.map((c) => ({ ...c })))
+  taskOwnerState.clear()
 }
 
 // Presentation-only formatters + pure helpers (no data access) re-exported
@@ -1010,6 +1075,18 @@ export {
   NQF_LEVELS,
   ORG_PRODUCTS,
 } from './certifications'
+
+// Dashboard pure helpers (due-date maths + billable pipeline counts), re-exported
+// through the seam so the Dashboard screen imports everything from '@/lib/mock'.
+export {
+  dueInfo,
+  buildThisWeek,
+  countBillableStages,
+  countSummaryStages,
+  BILLABLE_STAGES,
+  DASHBOARD_NOW_ISO,
+} from './dashboard'
+export type { DueInfo, DueState, ThisWeekRow, ThisWeekInput } from './dashboard'
 
 export { CURRENT_EMPLOYEE_ID, ONBOARDING_EMPLOYEE_ID }
 export type { OnboardingGenerationPhase } from './onboarding'

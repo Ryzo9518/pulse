@@ -6,7 +6,9 @@ import {
   getCurrentEmployee,
   getPolicyAckState,
   getTaskStatus,
+  getTaskOwner,
   getTotalPolicies,
+  listAssignableOwners,
   listMessages,
   listPolicies,
   listPolicyAcknowledgements,
@@ -14,6 +16,7 @@ import {
   listTasks,
   postMessage,
   publishPolicyVersion,
+  setTaskOwner,
   setTaskStatus,
   startReadingPolicy,
 } from '../index'
@@ -57,6 +60,47 @@ describe('listTasks (role visibility)', () => {
     expect(adminTasks.length).toBeGreaterThan(employeeTasks.length)
     // admin set includes at least one admin-only task
     expect(adminTasks.some((t) => t.visibility === 'admin')).toBe(true)
+  })
+})
+
+describe('task owner assignment', () => {
+  it("resolves a task's seeded default_owner token to a real employee id", () => {
+    // t4 ("Prepare laptop / workstation") seeds default_owner 'siko' (Siko Dlamini).
+    const ownerId = getTaskOwner('t4')
+    expect(ownerId).toBeTruthy()
+    const owners = listAssignableOwners()
+    expect(owners.some((e) => e.id === ownerId)).toBe(true)
+    expect(owners.find((e) => e.id === ownerId)?.first_name).toBe('Siko')
+  })
+
+  it('returns null for a task with no owner (employee self-verification)', () => {
+    // t30 ("Verify: Logged into Microsoft 365") has default_owner null.
+    expect(getTaskOwner('t30')).toBeNull()
+  })
+
+  it('setTaskOwner overrides the seeded owner and persists', () => {
+    const target = listAssignableOwners().find((e) => e.first_name === 'Ryan')!
+    setTaskOwner('t4', target.id)
+    expect(getTaskOwner('t4')).toBe(target.id)
+  })
+
+  it('setTaskOwner(null) explicitly unassigns, beating the seeded default', () => {
+    expect(getTaskOwner('t4')).toBeTruthy() // seeded owner present
+    setTaskOwner('t4', null)
+    expect(getTaskOwner('t4')).toBeNull()
+  })
+
+  it('rejects an unknown employee id', () => {
+    expect(() => setTaskOwner('t4', 'emp-does-not-exist')).toThrow()
+  })
+
+  it('__resetMockState clears owner overrides', () => {
+    setTaskOwner('t4', listAssignableOwners()[0].id)
+    __resetMockState()
+    // Back to the seeded default (Siko), not the override.
+    expect(
+      listAssignableOwners().find((e) => e.id === getTaskOwner('t4'))?.first_name,
+    ).toBe('Siko')
   })
 })
 
