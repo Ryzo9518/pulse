@@ -2,29 +2,18 @@
 
 ## Authentication
 
+Auth is **Microsoft 365 SSO**. Staff sign in with their Jera Microsoft 365 account; the M365 identity is mapped to one of the three roles (Employee, Manager, Admin), and that role drives Supabase Row Level Security. There is no separate PULSE password or PULSE-managed 2FA — sign-in, MFA, and password resets are all handled by Microsoft 365.
+
+> **Current phase:** the app runs on mock data with a dev role-switch standing in for SSO. M365 SSO and the role→RLS mapping are wired in the upcoming backend phase.
+
 ### Login (app/auth/login/page.tsx)
-- Email + password form
-- Validates @jera.co.za domain
-- On success → redirect to 2FA screen
-- "Forgot password?" link → forgot password flow
-- Uses Supabase Auth `signInWithPassword()`
-
-### 2FA (app/auth/twofactor/page.tsx)
-- 6-digit TOTP code input (Google/Microsoft Authenticator)
-- Auto-advance between input fields
-- Paste support for full 6-digit code
-- On success → redirect to dashboard
-- Uses Supabase Auth MFA: `auth.mfa.verify()`
-- "Back to login" link
-
-### Forgot Password (app/auth/forgot/page.tsx)
-- Step 1: Enter email → sends reset link via Supabase Auth
-- Step 2: User clicks link in email → enters new password
-- Uses Supabase Auth `resetPasswordForEmail()`
+- "Sign in with Microsoft 365" — redirects to the Microsoft identity provider
+- Restricted to the Jera Microsoft 365 tenant
+- On success → role resolved from the M365 identity → redirect to dashboard
 
 ### Logout
 - Button in sidebar bottom
-- Calls `supabase.auth.signOut()`
+- Signs the user out of the PULSE session
 - Redirects to login
 
 ---
@@ -39,19 +28,22 @@ PULSE logo + tagline
   ▦ Workflow [badge: pending task count]
   ◈ SOPs
   📝 My Forms [badge: incomplete count]
-  📖 Policies [badge: X/20]
+  📖 Policies [badge: X/24]
+─── Learning ───
+  🎓 Training
+  🏅 Certifications
 ─── People ───
   ◉ Directory
 ─── Finance ───
   💰 Expenses
 ─── Resources ───
   📂 Documents
-─── Comms ───
-  💬 Chat [badge: unread count]
-─── Admin (if role=admin) ───
-  👥 All Employees
+─── Help ───
+  💬 Ask HR (Pulse Assistant)
+─── Team (if role=manager or admin) ───
+  👥 My Team / All Employees
   ➕ New Employee
-  🔑 Passwords
+─── Admin (if role=admin) ───
   📣 Notify All
 ─── Bottom ───
   [User avatar + name + role]
@@ -59,7 +51,9 @@ PULSE logo + tagline
 ```
 
 ### Role-Based Visibility
-- Admin section only visible when `employee.role === 'admin'`
+- Three roles: **Employee**, **Manager**, **Admin**.
+- Team section visible when `role === 'manager'` or `role === 'admin'`. Managers see their own team (work fields only — no payroll/POPIA/contract); admins see the full roster.
+- Admin-only items (Notify All, document upload/delete, policy versioning, uploading certificates for others) visible only when `role === 'admin'`.
 - Nav highlight follows current route
 - Sub-form views (form-personal, form-emergency, etc.) highlight "My Forms"
 
@@ -81,7 +75,7 @@ PULSE logo + tagline
 - Activity feed (from `admin_activity_feed` view)
 
 ### Ping Button
-- Calls API route `/api/email` which uses Resend to send email
+- Calls the email API route which sends via Microsoft 365 / Outlook (Graph API)
 - Email sent FROM the logged-in user's email TO the pinged employee's email
 - Subject: "PULSE Reminder from [sender name]"
 - Body: "[sender name] has sent you a reminder to review your pending tasks."
@@ -113,9 +107,9 @@ Shows ALL tasks, organised by responsible person:
 ### Contract Upload
 - Task "Sign employment contract & NDA" has a file upload area
 - Accepts PDF only
-- Uploads to Supabase Storage `contracts` bucket
+- Uploads to SharePoint / OneDrive (Microsoft 365); the SharePoint item reference is stored against the record
 - Creates record in `contract_uploads` table
-- Admin can view uploaded contracts
+- Admin can view uploaded contracts (this is an admin-only task — hidden from managers)
 
 ---
 
@@ -147,7 +141,7 @@ Shows ALL tasks, organised by responsible person:
 1. **Personal Information** — first/last name, SA ID, DOB, gender, nationality, language, address (with SA province dropdown), cell, email
 2. **Emergency Contacts** — 2 contacts (name, relationship, address, phones, employer) + medical info (doctor, medical aid, allergies) + consent checkbox
 3. **Tax & Banking** — SARS tax ref, tax status, SA bank dropdown, account details + consent checkbox
-4. **Policies** — redirects to Policies page (must complete all 20)
+4. **Policies** — redirects to Policies page (must complete all 24)
 5. **30-60-90 Day Goals** — 3 goals per period (30/60/90 days), colour-coded cards
 
 ### Progress Tracking
@@ -159,18 +153,44 @@ Shows ALL tasks, organised by responsible person:
 
 ## Policies (app/policies/page.tsx) — CRITICAL GATE
 
-### 20 HR Policies with mandatory walkthrough
-- List view showing all 20 policies with status (not started / in progress / completed)
-- Overall progress bar (X/20 acknowledged)
+### 24 HR Policies with mandatory walkthrough
+- List view showing all 24 policies with status (not started / in progress / completed)
+- Overall progress bar (X/24 acknowledged)
 - Click a policy → expands to show summary + key content
 - Each policy has: "I have read and understood this policy" checkbox
 - Checkbox saves to `hr_policy_acknowledgements` with timestamp
-- **GATE: Employee cannot navigate to other onboarding sections until ALL 20 are acknowledged**
-- When all 20 complete → `employees.policies_completed` set to `true`
+- **GATE: Employee cannot navigate to other onboarding sections until ALL 24 are acknowledged**
+- When all 24 complete → `employees.policies_completed` set to `true`
 - Audit trail: `read_started_at` (when opened) and `acknowledged_at` (when ticked)
+- Admin can publish a new policy version, which **resets all acknowledgements** (everyone must re-acknowledge)
 
 ### Policy Data
-All 20 policies seeded in `hr_policies` table with summaries. Full documents in Supabase Storage.
+All 24 policies seeded in `hr_policies` table with summaries. Policy source files live in SharePoint / OneDrive (Microsoft 365); the Word body is converted to HTML/rich text for in-app reading, with the original downloadable as PDF.
+
+---
+
+## Training (app/training/page.tsx)
+
+### Per-product learning paths
+- Multi-product Sage U learning paths (Intacct, X3, 300 People, Payroll Advanced, …) with nested groups and typed modules
+- Progress tracking per module; ILT (instructor-led training) date entry feeds billable readiness
+- **4-stage billable ladder:** Pre-supervised → Supervised-billable → ILT complete → Certified
+  - Supervised-billable ≈ start date + 7 days (foundations + shadowing done)
+  - ILT complete = the consultant-entered instructor-led training date
+  - Certified ≈ ILT date + 10 days (after the certification exam)
+- Managers and admins can view their team's training status
+
+---
+
+## Certifications (app/certifications/page.tsx)
+
+### Certificate tracking + tender packs
+- Upload **product** certs and **NQF qualification** certs, each with an expiry date
+- Certificate files stored in SharePoint / OneDrive (Microsoft 365)
+- Expiry status: within 60 days → "expiring" (amber), past → "expired" (red); drives recertification alerts
+- Organisation → product cascading filters for building **tender packs** (download-all / select certificates for a tender)
+- **Employees and managers can upload their OWN certificates; only admins upload/edit certificates for other people.**
+- Managers and admins can view their team's certifications + run the tender export
 
 ---
 
@@ -178,15 +198,15 @@ All 20 policies seeded in `hr_policies` table with summaries. Full documents in 
 
 ### Expense Claim Form
 - Claimant details: name (auto-filled), claim period (month picker)
-- **Travel Claims** section:
-  - Columns: Client Name (REQUIRED), Date, Rate (R1.50/km SARS 2026), KMs, Amount (auto-calc)
-  - Add Row button
-- **Other Expenses** section:
-  - Columns: Client Name (REQUIRED), Date, Description, Amount
-  - Receipt upload (Supabase Storage `receipts` bucket)
-  - Add Row button
-- Grand Total (auto-calculated)
-- Submit button → status changes to `submitted`, notification sent to approver
+- **Expenses incurred** section: Client Name (REQUIRED), Date, Description, Amount; receipt slip upload per line (stored in SharePoint / OneDrive)
+- **Travel (AA rate)** section:
+  - Reimbursed at the consultant's **AA Vehicle Rates Certificate** rate. The AA Rate Certificate upload sets per-person rates.
+  - **Full AA rate** for travel **invoiced** to a client; **fixed-cost** rate for **non-invoiced** travel.
+  - Travel not invoiced to a client may not be claimed.
+- **Advances** — deducted from the total
+- **Grand total payable** = expenses incurred + travel − advances (auto-calculated)
+- A copy of the **timesheet must accompany every claim** (attachment required)
+- Submit button → status changes to `submitted`, notification sent to approver (via M365 Graph). Submit by the 25th.
 
 ### Approver View
 - Approvers see "Pending Approvals" tab
@@ -200,17 +220,14 @@ All 20 policies seeded in `hr_policies` table with summaries. Full documents in 
 
 ---
 
-## Chat & Announcements (app/chat/page.tsx)
+## Ask HR — Pulse Assistant (app/chat/page.tsx)
 
-### Two Tabs
-1. **Announcements** — admin-only posting, red left border on messages, "ANNOUNCEMENT" tag
-2. **General Chat** — open to everyone
+This is **not** a team chat. Day-to-day team messaging happens in **Microsoft Teams**, and company-wide announcements go out via **Notify All** (admin). The in-app "chat" route is the **Ask HR Pulse Assistant** — an AI helper grounded on the HR/payroll policy corpus and leave/expense rules.
 
 ### Features
-- Message list with avatar, name, timestamp, body
-- Compose bar at bottom (input + send button, Enter to send)
-- Real-time updates via Supabase Realtime subscriptions
-- Admin check: only admins can type in announcements tab
+- Conversational Q&A grounded on the 24 HR policies + payroll/leave/expense rules
+- Never invents figures; defers to HR for binding answers
+- **Deferred — built last.** The prototype uses a demo LLM helper; production needs a real model endpoint with retrieval over the policy corpus.
 
 ---
 
@@ -230,31 +247,32 @@ Categories: Contracts & Policies, Timesheets & Invoicing, Job Descriptions, SOPs
 ### Per Document
 - File type badge (DOCX, PDF, XLSX, TXT)
 - Title, description
-- Click → opens/downloads from Supabase Storage
+- Click → opens/downloads from SharePoint / OneDrive (Microsoft 365)
 - Tracks view in `document_acknowledgements`
+
+### Admin document management
+- Admins can **upload** files or add SharePoint links (multiple) and **delete** documents
+- Employees and managers have read-only access to the library
 
 ---
 
 ## Admin Portal
 
-### All Employees (app/admin/employees/page.tsx)
+### All Employees / My Team (app/admin/employees/page.tsx)
+- Admin: full roster. Manager: their own team (work fields only — no POPIA/personal data).
 - Table: avatar, name, email, role, department, status, phone, actions
-- "Notify" button per employee (sends ping email)
+- "Notify" button per employee (sends ping email via M365 Graph)
 - Links to view employee's onboarding progress
 
-### New Employee (app/admin/onboard/page.tsx)
-- Form: name, role, email, department, start date, manager
-- Creates Supabase Auth user + employees record + onboarding workflow + leave balances
-- Fires notifications to HR and IT
+### New Employee / Schedule onboarding (app/admin/onboard/page.tsx)
+- Form: name, role, department, product, start date, email, buddy
+- Generates the standard onboarding (30 tasks across 5 phases) + adds to roster, onboarding, and training
+- Available to managers and admins — but a manager scheduling a hire cannot see the contract/NDA or payroll/POPIA tasks
+- Sign-in itself is via Microsoft 365 SSO; PULSE does not create or manage passwords
 
-### Password Management (app/admin/passwords/page.tsx)
-- Table: employee, 2FA status, actions
-- "Reset Password" → Supabase Auth admin API
-- "Enable/Disable 2FA" toggle
-
-### Notify All (app/admin/notify/page.tsx)
-- Compose form: type (info/urgent/celebration/reminder), subject, message, target (all/department)
-- Send → creates `admin_notifications` record + sends bulk email via Resend
+### Notify All (app/admin/notify/page.tsx) — admin only
+- Compose form: type (info/urgent/celebration/reminder), subject, message, target audience (with live counts), live preview
+- Send → creates `admin_notifications` record + sends in-app + bulk email via Microsoft 365 / Outlook (Graph API)
 - Sent history below
 
 ---
@@ -262,7 +280,7 @@ Categories: Contracts & Policies, Timesheets & Invoicing, Job Descriptions, SOPs
 ## API Routes
 
 ### POST /api/email (app/api/email/route.ts)
-Handles all outbound email via Resend:
+Handles all outbound email via Microsoft 365 / Outlook (Graph API):
 ```typescript
 // Request body
 {
@@ -293,7 +311,7 @@ Handles all outbound email via Resend:
 | onboarding_form_completions | Which forms are done |
 | employee_goals | 30-60-90 goals |
 | contract_uploads | Signed contract PDFs |
-| hr_policies | 20 policies (seeded) |
+| hr_policies | 24 policies (seeded) |
 | hr_policy_acknowledgements | Per-employee per-policy ack |
 | sops | 4 SOPs (seeded) |
 | sop_steps | All SOP steps (seeded) |
@@ -303,7 +321,7 @@ Handles all outbound email via Resend:
 | expense_other_lines | Other expense lines |
 | messages | Chat messages |
 | admin_notifications | Broadcast notifications |
-| email_log | All emails sent via Resend |
+| email_log | All emails sent via Microsoft 365 / Outlook (Graph API) |
 | documents | Document library |
 | document_acknowledgements | Who viewed what |
 | audit_log | All trackable actions |

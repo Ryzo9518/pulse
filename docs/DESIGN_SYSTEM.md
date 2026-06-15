@@ -1,5 +1,7 @@
 # PULSE — Design System
 
+> **Visual source of truth:** the interactive prototype `docs/prototype/Pulse.dc.html` plus `docs/prototype/HANDOFF.md`. This design system documents the same tokens and patterns; where they ever differ, the prototype wins. The older `docs/pulse_v4_prototype.html` is superseded.
+
 ## Brand Colours (Jera Legacy)
 
 | Token | Hex | CSS Variable | Usage |
