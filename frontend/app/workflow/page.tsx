@@ -1,13 +1,16 @@
 'use client'
 
 // ── Workflow task board (Unit 6) ──────────────────────────────────────────────
-// Onboarding task board. The employee view shows employee/both tasks grouped
-// into expandable phase accordions; the admin view shows ALL tasks grouped by
-// the responsible person. The board core lives in WorkflowBoard so it can be
-// unit-tested without the AppShell. Session role drives which variant renders.
+// Onboarding task board. Every role gets the same phase-accordion shape
+// (Pre-Arrival → Day 1 → IT Setup → HR Admin → Orientation) with per-phase
+// progress; the active role only changes WHICH phases/tasks are visible (a
+// manager loses the HR-admin phase + contract task per HANDOFF §2). Admins also
+// get the per-task owner-assignment control. The board core lives in
+// WorkflowBoard so it can be unit-tested without the AppShell.
 
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { isStaffRole } from '@/lib/capabilities'
 import { useSession } from '@/lib/mock/session'
 
 import { WorkflowBoard } from './WorkflowBoard'
@@ -15,12 +18,11 @@ import { WorkflowBoard } from './WorkflowBoard'
 export default function WorkflowPage() {
   const { role, currentEmployee } = useSession()
 
-  const subtitle =
-    role === 'admin'
-      ? 'All onboarding tasks, grouped by who is responsible.'
-      : `Your onboarding journey${
-          currentEmployee ? `, ${currentEmployee.first_name}` : ''
-        } — work through each phase.`
+  const subtitle = isStaffRole(role)
+    ? 'Onboarding phases from pre-arrival to fully productive — assign owners and track every step.'
+    : `Your onboarding journey${
+        currentEmployee ? `, ${currentEmployee.first_name}` : ''
+      } — work through each phase.`
 
   return (
     <AppShell>

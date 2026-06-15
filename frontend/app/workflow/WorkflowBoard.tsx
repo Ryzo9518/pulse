@@ -1,39 +1,49 @@
 'use client'
 
 // ── WorkflowBoard ────────────────────────────────────────────────────────────
-// The task-board core, extracted from the page so it can be unit-tested without
-// the AppShell/Sidebar (which depend on layout-only hooks). It reads tasks for
-// the active role from the mock accessor layer, groups them (by phase for the
-// employee view, by responsible person for the admin view), and renders each
-// task as a status-controllable row. All status mutation goes through the
-// centralized `setTaskStatus` mutator; a local version counter forces a
-// re-render so the UI reflects the freshly-read status.
+// The onboarding task-board core, extracted from the page so it can be unit-
+// tested without the AppShell/Sidebar (which depend on layout-only hooks).
+//
+// Every role gets the SAME phase-accordion shape (Pre-Arrival → Day 1 → IT Setup
+// → HR Admin → Orientation) with per-phase progress bars; the active role only
+// changes WHICH phases/tasks are visible. That role scoping lives in the data
+// layer — listPhases(role)/listTasks(role) — so a manager never sees the HR-admin
+// phase or the contract/NDA task (HANDOFF §2). The board just passes the role.
+//
+// The defining per-task control is OWNER ASSIGNMENT (admins only, gated by
+// can(role,'assignTaskOwners')): an owner <select> drawn from the roster that
+// fires an "assignment email sent" toast and persists via the setTaskOwner
+// mutator, plus a ✉ resend button. Priority dots and Zoho/M365 system badges
+// (decision D4) are kept but secondary. Status is a done/pending checkbox with an
+// inferred in-progress state, matching the prototype; the legacy Start/Done
+// button is kept alongside as a secondary affordance.
+//
+// All mutation goes through the centralized mock mutators; a local version
+// counter forces a re-render so the UI reflects freshly-read state.
 
 import { useCallback, useMemo, useState } from 'react'
 
-import type { OnboardingTask, TaskStatus, UserRole } from '@/types/database'
+import type { Employee, OnboardingTask, TaskStatus, UserRole } from '@/types/database'
 import {
   listPhases,
   listTasks,
+  listAssignableOwners,
   getTaskStatus,
   setTaskStatus,
+  getTaskOwner,
+  setTaskOwner,
+  getEmployee,
 } from '@/lib/mock'
-import { Badge, Button, Card, Modal, ProgressBar, useToast } from '@/components/ui'
-
-// Maps a task's `default_owner` token (e.g. 'hr', 'siko') to a display label.
-// `null` owners (employee self-verification tasks) fall back to a sensible name.
-const OWNER_LABELS: Record<string, string> = {
-  hr: 'HR Team',
-  ryan: 'Ryan de Kock',
-  siko: 'Siko Dlamini',
-  raymond: 'Raymond Mokoena',
-  joann: 'Jo-Ann Visser',
-}
-
-function ownerLabel(owner: string | null): string {
-  if (!owner) return 'You (self-service)'
-  return OWNER_LABELS[owner] ?? owner
-}
+import { can } from '@/lib/capabilities'
+import {
+  Badge,
+  Button,
+  Card,
+  Modal,
+  ProgressBar,
+  Select,
+  useToast,
+} from '@/components/ui'
 
 const PRIORITY_COLOR: Record<string, 'red' | 'amber' | 'grey'> = {
   high: 'red',
@@ -47,7 +57,15 @@ const SYSTEM_LABEL: Record<string, string> = {
 }
 
 // The contract task gets a file-drop affordance (FEATURE_SPEC "Contract Upload").
+// It is visibility 'both' but manager_hidden, so only the employee + admin ever
+// reach this row; the drop-zone itself stays admin-only.
 const CONTRACT_TASK_ID = 't7'
+
+/** First name → "@jera.co.za" email, matching the prototype's onEmail toast. */
+function ownerEmail(employee: Employee | undefined): string {
+  if (!employee) return ''
+  return employee.email
+}
 
 export interface WorkflowBoardProps {
   role: UserRole
@@ -68,11 +86,23 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
   // Records a mock contract "upload" so the UI can reflect it (no real upload).
   const [uploadedContract, setUploadedContract] = useState<string | null>(null)
 
-  // Re-read tasks whenever the role or version changes.
+  const canAssignOwners = can(role, 'assignTaskOwners')
+
+  // Re-read role-scoped tasks/phases whenever the role or version changes. This
+  // is the single visibility boundary: a manager gets no HR-admin phase and no
+  // contract task because the accessor layer drops them (HANDOFF §2).
   const tasks = useMemo(() => listTasks(role), [role, version])
-  // Role-scope phases too (not just tasks): a manager must never see the
-  // HR-admin phase header. listPhases(role) drops it for managers.
   const phases = useMemo(() => listPhases(role), [role])
+
+  // Roster for the owner <select> (admins only ever render it).
+  const owners = useMemo(() => listAssignableOwners(), [])
+  const ownerOptions = useMemo(
+    () => [
+      { value: '', label: 'Unassigned' },
+      ...owners.map((e) => ({ value: e.id, label: e.display_name })),
+    ],
+    [owners],
+  )
 
   const statusOf = useCallback(
     (taskId: string): TaskStatus => getTaskStatus(taskId)?.status ?? 'pending',
@@ -81,6 +111,35 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
     [version],
   )
 
+  const ownerOf = useCallback(
+    (taskId: string): Employee | undefined => {
+      const id = getTaskOwner(taskId)
+      return id ? getEmployee(id) : undefined
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [version],
+  )
+
+  // Primary status control: a checkbox that toggles done <-> not-done. A
+  // not-done task that has been started reads as 'inprogress'; otherwise
+  // 'pending' (matching the prototype's inferred status).
+  const toggleDone = useCallback(
+    (task: OnboardingTask) => {
+      const isDone = statusOf(task.id) === 'done'
+      setTaskStatus(task.id, isDone ? 'pending' : 'done')
+      if (!isDone) {
+        toast({
+          title: 'Task complete',
+          message: `"${task.title}" marked done.`,
+          variant: 'success',
+        })
+      }
+      bump()
+    },
+    [statusOf, toast, bump],
+  )
+
+  // Secondary status control: advance pending -> inprogress -> done.
   const advance = useCallback(
     (task: OnboardingTask) => {
       const current = statusOf(task.id)
@@ -98,11 +157,33 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
     [statusOf, toast, bump],
   )
 
-  const sendReminder = useCallback(
-    (task: OnboardingTask) => {
+  // The defining interaction: assigning an owner fires an assignment email.
+  const assignOwner = useCallback(
+    (task: OnboardingTask, ownerId: string) => {
+      setTaskOwner(task.id, ownerId || null)
+      const person = ownerId ? getEmployee(ownerId) : undefined
+      if (person) {
+        toast({
+          title: 'Task assigned',
+          message: `"${task.title}" assigned to ${person.display_name} — assignment email sent.`,
+          variant: 'success',
+        })
+      } else {
+        toast({
+          title: 'Task unassigned',
+          message: `"${task.title}" has no owner.`,
+        })
+      }
+      bump()
+    },
+    [toast, bump],
+  )
+
+  const resendAssignmentEmail = useCallback(
+    (task: OnboardingTask, owner: Employee) => {
       toast({
-        title: 'Reminder sent',
-        message: `Pinged ${ownerLabel(task.default_owner)} about "${task.title}".`,
+        title: 'Assignment email sent',
+        message: `${owner.display_name} was emailed about "${task.title}".`,
       })
     },
     [toast],
@@ -125,6 +206,7 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
     const isDone = status === 'done'
     const isInProgress = status === 'inprogress'
     const prio = PRIORITY_COLOR[task.priority] ?? 'grey'
+    const owner = ownerOf(task.id)
 
     return (
       <div
@@ -133,9 +215,26 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
         data-status={status}
         className="flex items-start gap-3 border-b border-surface-border-light py-3 last:border-b-0"
       >
+        {/* Primary status control: done/pending checkbox. */}
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={isDone}
+          aria-label={`Mark "${task.title}" ${isDone ? 'not done' : 'done'}`}
+          onClick={() => toggleDone(task)}
+          className={`mt-[2px] flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-[12px] font-bold transition-colors ${
+            isDone
+              ? 'border border-jera-red bg-jera-red text-white'
+              : 'border-[1.5px] border-surface-border bg-white text-transparent hover:border-jera-red/50'
+          }`}
+        >
+          {isDone ? '✓' : ''}
+        </button>
+
+        {/* Secondary priority dot (decision D4 — kept, de-emphasised). */}
         <span
           aria-hidden
-          className={`mt-[6px] h-2 w-2 flex-shrink-0 rounded-full ${
+          className={`mt-[7px] h-2 w-2 flex-shrink-0 rounded-full ${
             prio === 'red'
               ? 'bg-jera-red'
               : prio === 'amber'
@@ -143,6 +242,7 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
                 : 'bg-text-muted'
           }`}
         />
+
         <div className="min-w-0 flex-1">
           <div
             className={`text-[13px] font-semibold ${
@@ -152,9 +252,25 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
             {task.title}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <span className="text-[11px] text-text-muted">
-              {ownerLabel(task.default_owner)}
-            </span>
+            {/* Non-admins see the resolved owner as a read-only chip. */}
+            {!canAssignOwners ? (
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
+                {owner ? (
+                  <>
+                    <span
+                      aria-hidden
+                      className="flex h-[18px] w-[18px] items-center justify-center rounded-[5px] font-mono text-[9px] font-bold text-white"
+                      style={{ backgroundColor: owner.avatar_color }}
+                    >
+                      {owner.avatar_initials}
+                    </span>
+                    {owner.display_name}
+                  </>
+                ) : (
+                  'You (self-service)'
+                )}
+              </span>
+            ) : null}
             <Badge color={prio}>{task.priority}</Badge>
             {task.system ? (
               <Badge color={task.system === 'zoho' ? 'amber' : 'blue'}>
@@ -163,7 +279,8 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
             ) : null}
           </div>
 
-          {task.id === CONTRACT_TASK_ID ? (
+          {/* Contract drop-zone stays admin-only. */}
+          {task.id === CONTRACT_TASK_ID && canAssignOwners ? (
             <ContractDropZone
               uploadedName={uploadedContract}
               onUpload={onContractUpload}
@@ -172,40 +289,56 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-2">
-          {isDone ? (
-            <Badge color="green">✓ Done</Badge>
-          ) : (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label={`Send reminder for ${task.title}`}
-                onClick={() => sendReminder(task)}
-              >
-                🔔
-              </Button>
-              {task.system ? (
+          {/* PRIMARY per-task control for admins: owner assignment. */}
+          {canAssignOwners ? (
+            <span className="flex items-center gap-1.5">
+              <Select
+                aria-label={`Assign owner for ${task.title}`}
+                value={owner?.id ?? ''}
+                options={ownerOptions}
+                onChange={(e) => assignOwner(task, e.target.value)}
+                className="max-w-[170px] !py-[6px] !text-[12px]"
+              />
+              {owner ? (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() =>
-                    setIntegration({
-                      taskTitle: task.title,
-                      system: task.system as string,
-                    })
-                  }
+                  aria-label={`Resend assignment email to ${ownerEmail(owner)}`}
+                  title={`Resend assignment email to ${ownerEmail(owner)}`}
+                  onClick={() => resendAssignmentEmail(task, owner)}
                 >
-                  → {SYSTEM_LABEL[task.system] ?? task.system}
+                  ✉
                 </Button>
               ) : null}
-              <Button
-                size="sm"
-                variant={isInProgress ? 'secondary' : 'primary'}
-                onClick={() => advance(task)}
-              >
-                {isInProgress ? '✓ Done' : 'Start'}
-              </Button>
-            </>
+            </span>
+          ) : null}
+
+          {task.system ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setIntegration({
+                  taskTitle: task.title,
+                  system: task.system as string,
+                })
+              }
+            >
+              → {SYSTEM_LABEL[task.system] ?? task.system}
+            </Button>
+          ) : null}
+
+          {/* Secondary status affordance kept alongside the checkbox. */}
+          {isDone ? (
+            <Badge color="green">✓ Done</Badge>
+          ) : (
+            <Button
+              size="sm"
+              variant={isInProgress ? 'secondary' : 'primary'}
+              onClick={() => advance(task)}
+            >
+              {isInProgress ? '✓ Done' : 'Start'}
+            </Button>
           )}
         </div>
       </div>
@@ -214,16 +347,24 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
 
   return (
     <div className="px-10 py-8">
-      {role === 'admin' ? (
-        <AdminGroups tasks={tasks} renderTaskRow={renderTaskRow} />
-      ) : (
-        <PhaseAccordion
-          tasks={tasks}
-          phases={phases}
-          statusOf={statusOf}
-          renderTaskRow={renderTaskRow}
-        />
-      )}
+      {canAssignOwners ? (
+        <div className="mb-3 flex items-center gap-2.5 rounded-card border border-surface-border bg-surface-card px-4 py-3 shadow-card">
+          <span aria-hidden className="text-[15px]">
+            ✉
+          </span>
+          <span className="text-[12.5px] text-text-secondary">
+            Assign responsibility per task using the dropdown — the assignee is
+            emailed automatically. Use ✉ to resend.
+          </span>
+        </div>
+      ) : null}
+
+      <PhaseAccordion
+        tasks={tasks}
+        phases={phases}
+        statusOf={statusOf}
+        renderTaskRow={renderTaskRow}
+      />
 
       <Modal
         open={integration !== null}
@@ -264,7 +405,7 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
   )
 }
 
-// ── Employee view: phase accordions ───────────────────────────────────────────
+// ── Phase accordions (shared by every role; visibility differs upstream) ───────
 
 interface PhaseAccordionProps {
   tasks: OnboardingTask[]
@@ -345,47 +486,6 @@ function PhaseAccordion({
           </div>
         )
       })}
-    </div>
-  )
-}
-
-// ── Admin view: grouped by responsible person ─────────────────────────────────
-
-interface AdminGroupsProps {
-  tasks: OnboardingTask[]
-  renderTaskRow: (task: OnboardingTask) => React.ReactNode
-}
-
-function AdminGroups({ tasks, renderTaskRow }: AdminGroupsProps) {
-  // Group by responsible person (default_owner), with a stable display order.
-  const groups = useMemo(() => {
-    const byOwner = new Map<string | null, OnboardingTask[]>()
-    for (const task of tasks) {
-      const list = byOwner.get(task.default_owner) ?? []
-      list.push(task)
-      byOwner.set(task.default_owner, list)
-    }
-    return Array.from(byOwner.entries())
-      .map(([owner, ownerTasks]) => ({
-        owner,
-        label: ownerLabel(owner),
-        tasks: ownerTasks,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label))
-  }, [tasks])
-
-  return (
-    <div className="space-y-5">
-      {groups.map((group) => (
-        <Card
-          key={group.owner ?? 'self'}
-          title={`${group.label} · ${group.tasks.length} task${
-            group.tasks.length === 1 ? '' : 's'
-          }`}
-        >
-          <div>{group.tasks.map(renderTaskRow)}</div>
-        </Card>
-      ))}
     </div>
   )
 }
