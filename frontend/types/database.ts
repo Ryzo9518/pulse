@@ -21,7 +21,6 @@ export type SopKey = 'projects' | 'desk' | 'timekeeping' | 'client_access'
 export type FormKey = 'personal' | 'emergency' | 'tax' | 'policies' | 'goals'
 export type NotificationType = 'info' | 'urgent' | 'celebration' | 'reminder'
 export type MessageType = 'announcement' | 'chat'
-export type MeetingStatus = 'pending' | 'confirmed' | 'declined' | 'cancelled'
 export type DocumentCategory = 'contracts_policies' | 'timesheets_invoicing' | 'job_descriptions' | 'sops_procedures' | 'employee_forms' | 'hr_policies' | 'other'
 
 export interface Employee {
@@ -32,6 +31,13 @@ export interface Employee {
   display_name: string        // auto-generated
   avatar_initials: string     // auto-generated
   role: UserRole
+  /**
+   * Super-admin / owner. Unrestricted access AND protected top authority: only an
+   * owner may grant/revoke admin/owner, and an owner can't be demoted or locked
+   * out. Optional in the type for back-compat; enforced in the DB (is_owner +
+   * trigger) — see database/migrations/002_rls.sql.
+   */
+  is_owner?: boolean
   status: EmployeeStatus
   job_title: string | null
   department: string | null
@@ -722,6 +728,27 @@ export interface CertExpiryInfo {
   days: number | null
 }
 
+// ── Persisted training rows (DB shape; the app also uses the richer
+//    TrainingEnrolment view-model above). Mirror database/migrations/001_schema.sql.
+export interface TrainingStatusRow {
+  employee_id: string
+  product: ProductId
+  cert_path: string
+  ilt_date: string | null
+  getting_started_done: boolean
+  ilt_done: boolean
+  certified: boolean
+  updated_at: string
+}
+
+export interface TrainingProgressRow {
+  id: string
+  employee_id: string
+  module_key: string
+  done: boolean
+  updated_at: string
+}
+
 // ── SUPABASE DATABASE TYPE (for typed client) ──
 // Developer: replace this with `npx supabase gen types typescript` output
 export interface Database {
@@ -753,6 +780,9 @@ export interface Database {
       admin_notifications: { Row: AdminNotification; Insert: Partial<AdminNotification>; Update: Partial<AdminNotification> }
       email_log: { Row: EmailLog; Insert: Partial<EmailLog>; Update: Partial<EmailLog> }
       certifications: { Row: Certification; Insert: Partial<Certification>; Update: Partial<Certification> }
+      products: { Row: Product; Insert: Partial<Product>; Update: Partial<Product> }
+      training_status: { Row: TrainingStatusRow; Insert: Partial<TrainingStatusRow>; Update: Partial<TrainingStatusRow> }
+      training_progress: { Row: TrainingProgressRow; Insert: Partial<TrainingProgressRow>; Update: Partial<TrainingProgressRow> }
       documents: { Row: Document; Insert: Partial<Document>; Update: Partial<Document> }
       document_acknowledgements: { Row: DocumentAcknowledgement; Insert: Partial<DocumentAcknowledgement>; Update: Partial<DocumentAcknowledgement> }
       audit_log: { Row: AuditLog; Insert: Partial<AuditLog>; Update: Partial<AuditLog> }
