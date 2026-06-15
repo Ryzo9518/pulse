@@ -63,6 +63,47 @@ export const onboardingTasks: OnboardingTask[] = [
   { id: 't28', phase_id: 'training', title: 'Schedule weekly check-ins (Month 1)', default_owner: 'hr', priority: 'medium', system: 'zoho', days_offset: 5, visibility: 'admin', sort_order: 8 },
 ]
 
+// ── Onboarding generation template ────────────────────────────────────────────
+// When an admin/manager schedules a new starter, the workflow generator emits a
+// fixed standard task set across the five phases. This is the *template* the
+// "Schedule Onboarding" preview reports on (what WILL be generated), distinct
+// from the active per-employee workflow seed above. Sourced from the prototype's
+// PHASES + TASKS (newEmployeeData): 30 tasks across 5 phases. The per-phase
+// counts below mirror that canonical generation set, so the preview total stays
+// stable at 30 regardless of how the live demo workflow above evolves.
+export interface OnboardingGenerationPhase {
+  /** Matches an OnboardingPhase.id. */
+  id: string
+  name: string
+  icon: string | null
+  days_label: string | null
+  /** Number of tasks generated in this phase for a brand-new starter. */
+  task_count: number
+}
+
+const GENERATION_TASK_COUNTS: Record<string, number> = {
+  pre: 4,
+  day1: 4,
+  it: 12,
+  hr: 3,
+  training: 7,
+}
+
+export const onboardingGenerationPlan: OnboardingGenerationPhase[] =
+  onboardingPhases.map((p) => ({
+    id: p.id,
+    name: p.name,
+    icon: p.icon,
+    days_label: p.days_label,
+    task_count: GENERATION_TASK_COUNTS[p.id] ?? 0,
+  }))
+
+/** Total tasks generated for a new starter (sum of the per-phase template). */
+export const onboardingGenerationTaskTotal = onboardingGenerationPlan.reduce(
+  (sum, p) => sum + p.task_count,
+  0,
+)
+
 // The onboarding employee's active workflow.
 export const onboardingWorkflow: OnboardingWorkflow = {
   id: 'wf-001',

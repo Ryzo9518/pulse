@@ -56,7 +56,10 @@ import {
   onboardingTasks,
   onboardingWorkflow,
   onboardingTaskStatuses as seedTaskStatuses,
+  onboardingGenerationPlan,
+  onboardingGenerationTaskTotal,
 } from './onboarding'
+import type { OnboardingGenerationPhase } from './onboarding'
 import {
   hrPolicies,
   hrPolicyAcknowledgements as seedAcks,
@@ -295,6 +298,21 @@ export function listTasks(role: UserRole): OnboardingTask[] {
 
 export function listTaskStatuses(): OnboardingTaskStatus[] {
   return taskStatusState
+}
+
+/**
+ * The per-phase onboarding generation plan for a NEW starter — what the workflow
+ * generator WILL create. Drives the "Schedule Onboarding" preview panel (per-phase
+ * chips with counts). This is the standard template, not any one employee's live
+ * workflow, so its total is stable (see getOnboardingGenerationTaskTotal).
+ */
+export function getOnboardingGenerationPlan(): OnboardingGenerationPhase[] {
+  return onboardingGenerationPlan
+}
+
+/** Total tasks a new starter's workflow generates across all phases. */
+export function getOnboardingGenerationTaskTotal(): number {
+  return onboardingGenerationTaskTotal
 }
 
 export function getTaskStatus(taskId: string): OnboardingTaskStatus | undefined {
@@ -994,3 +1012,4 @@ export {
 } from './certifications'
 
 export { CURRENT_EMPLOYEE_ID, ONBOARDING_EMPLOYEE_ID }
+export type { OnboardingGenerationPhase } from './onboarding'
