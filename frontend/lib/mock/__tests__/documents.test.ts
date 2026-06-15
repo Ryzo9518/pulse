@@ -3,6 +3,7 @@ import {
   __resetMockState,
   LINK_FILE_TYPE,
   addDocuments,
+  deleteDocument,
   listDocuments,
   updateDocument,
 } from '../index'
@@ -133,6 +134,32 @@ describe('__resetMockState', () => {
       sharepoint_url: 'https://jera.sharepoint.com/y',
     })
     expect(listDocuments().length).toBe(original + 1)
+    __resetMockState()
+    expect(listDocuments().length).toBe(original)
+  })
+})
+
+describe('deleteDocument', () => {
+  it('removes a document from the library (soft-delete)', () => {
+    const before = listDocuments()
+    const target = before[0]
+    expect(target).toBeDefined()
+    deleteDocument(target.id)
+    const after = listDocuments()
+    expect(after.some((d) => d.id === target.id)).toBe(false)
+    expect(after.length).toBe(before.length - 1)
+  })
+
+  it('is idempotent — an unknown id is a no-op', () => {
+    const before = listDocuments().length
+    deleteDocument('does-not-exist')
+    expect(listDocuments().length).toBe(before)
+  })
+
+  it('reset restores deleted documents', () => {
+    const original = listDocuments().length
+    deleteDocument(listDocuments()[0].id)
+    expect(listDocuments().length).toBe(original - 1)
     __resetMockState()
     expect(listDocuments().length).toBe(original)
   })
