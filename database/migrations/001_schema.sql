@@ -418,6 +418,7 @@ create table messages (
   created_at   timestamptz not null default now()
 );
 create index messages_channel_idx on messages(channel);
+create index messages_author_id_idx on messages(author_id);   -- RLS filters on author_id
 
 create table admin_notifications (
   id                uuid primary key default gen_random_uuid(),
@@ -466,6 +467,7 @@ create table document_acknowledgements (
   acknowledged_at timestamptz not null default now(),
   unique(document_id, employee_id)
 );
+create index document_acknowledgements_employee_idx on document_acknowledgements(employee_id);   -- RLS filters on employee_id
 
 -- Append-only audit log (no UPDATE/DELETE granted; see 002_rls.sql).
 create table audit_log (
@@ -537,7 +539,9 @@ create index certifications_expiry_idx on certifications(expiry) where expiry is
 -- ════════════════════════════════════════════════════════════════════════════
 -- Views (admin dashboard) — match the 3 contract view types
 -- ════════════════════════════════════════════════════════════════════════════
-create view admin_onboarding_summary as
+-- security_invoker: the view runs with the CALLER's rights so base-table RLS
+-- applies (without it, views run as owner and bypass RLS — leaking PII/financials).
+create view admin_onboarding_summary with (security_invoker = true) as
 select
   e.id, e.display_name, e.email, e.status, e.start_date, e.department, e.job_title,
   coalesce((select count(*) from onboarding_form_completions f where f.employee_id = e.id),0)::int as forms_done,
@@ -551,13 +555,13 @@ select
   coalesce((select count(*) from expense_claims c where c.employee_id = e.id and c.status = 'submitted'),0)::int as expense_claims_pending
 from employees e;
 
-create view admin_activity_feed as
+create view admin_activity_feed with (security_invoker = true) as
 select a.id, a.employee_id, e.display_name, e.avatar_initials, e.avatar_color,
        a.action, a.detail, a.created_at
 from audit_log a join employees e on e.id = a.employee_id
 order by a.created_at desc;
 
-create view pending_expense_approvals as
+create view pending_expense_approvals with (security_invoker = true) as
 select c.id as claim_id, c.claim_period, c.grand_total, c.submitted_at,
        s.display_name as submitter_name, s.email as submitter_email,
        ap.display_name as approver_name

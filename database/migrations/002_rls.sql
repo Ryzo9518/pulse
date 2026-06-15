@@ -12,7 +12,7 @@
 --     data or the contract/HR-admin onboarding tasks.
 --
 -- auth.uid() is provided by Supabase in production. For local verification a
--- shim (database/test/000_test_auth_shim.sql) defines it from a session GUC.
+-- shim (database/test/000_auth_shim.sql) defines it from a session GUC.
 -- ════════════════════════════════════════════════════════════════════════════
 
 -- Supabase's app role. (No-op if it already exists, e.g. real Supabase.)
@@ -91,6 +91,17 @@ begin
   if old.is_owner and not new.is_owner and not pulse_is_owner() then
     raise exception 'An owner cannot be demoted by a non-owner';
   end if;
+  -- only an admin/owner may change employment fields; a user can't self-promote
+  -- (reactivate, reassign their manager, grant themselves approver, etc.).
+  if not pulse_is_admin() then
+    if (new.status is distinct from old.status)
+       or (new.manager_id is distinct from old.manager_id)
+       or (new.expense_role is distinct from old.expense_role)
+       or (new.department is distinct from old.department)
+       or (new.job_title is distinct from old.job_title) then
+      raise exception 'Only an admin may change employment fields (status/manager/expense role/department/title)';
+    end if;
+  end if;
   return new;
 end $$;
 create trigger employees_protect_privileged
@@ -106,6 +117,12 @@ begin
   for t in select tablename from pg_tables where schemaname = 'public'
   loop execute format('alter table %I enable row level security;', t); end loop;
 end $$;
+
+-- Tamper-evidence: append-only tables must resist even owner/definer-context
+-- mutation, not just the `authenticated` role. FORCE applies RLS to the table
+-- owner too (superuser still bypasses, which is only the migration/break-glass path).
+alter table audit_log force row level security;
+alter table hr_policy_ack_events force row level security;
 
 -- ── employees: work directory readable by all authenticated; writes gated ────
 -- (phone is the one borderline column — managers must not see it; enforced at the
@@ -264,7 +281,8 @@ create policy docack_self on document_acknowledgements for all to authenticated
   with check (employee_id = pulse_current_employee() or pulse_is_admin());
 -- Audit log: append-only; readable by admins only. (insert by anyone authenticated;
 -- no update/delete policy → denied.)
-create policy audit_ins on audit_log for insert to authenticated with check (true);
+create policy audit_ins on audit_log for insert to authenticated
+  with check (employee_id = pulse_current_employee() or pulse_is_admin());
 create policy audit_sel on audit_log for select to authenticated using (pulse_is_admin());
 
 -- ── Training / certifications ───────────────────────────────────────────────
@@ -295,3 +313,22 @@ create policy cert_upd on certifications for update to authenticated
   with check (employee_id = pulse_current_employee() or pulse_is_admin());
 create policy cert_del on certifications for delete to authenticated
   using (employee_id = pulse_current_employee() or pulse_is_admin());
+
+-- ── Expense approval integrity: a submitter cannot self-approve ──────────────
+-- Moving a claim to approved/returned, or setting the reviewer, requires an
+-- approver (admin, or the submitter's team manager). RLS lets the owner edit
+-- their own draft; this trigger stops them rubber-stamping it.
+create or replace function enforce_expense_transition() returns trigger
+  language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if (new.status is distinct from old.status and new.status in ('approved','returned'))
+     or (new.reviewed_by is distinct from old.reviewed_by) then
+    if not (pulse_is_admin()
+            or (pulse_role() = 'manager' and pulse_is_team_member(new.employee_id))) then
+      raise exception 'Only an approver (admin or the team manager) may approve/return a claim';
+    end if;
+  end if;
+  return new;
+end $$;
+create trigger expense_claims_transition before update on expense_claims
+  for each row execute function enforce_expense_transition();

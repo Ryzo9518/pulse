@@ -29,6 +29,31 @@ set role authenticated;
 select _expect('admin sees all tax_banking', count(*), 1) from employee_tax_banking;
 reset role;
 
+-- ── 1b. Other POPIA satellites + contract: manager NO, self yes, admin yes ───
+set app.auth_uid='00000000-0000-0000-0000-000000000005'; set role authenticated;  -- manager
+select _expect('MANAGER no personal_info (POPIA)', count(*), 0) from employee_personal_info;
+select _expect('MANAGER no medical_info (POPIA)', count(*), 0) from employee_medical_info;
+select _expect('MANAGER no emergency_contacts', count(*), 0) from emergency_contacts;
+select _expect('MANAGER no contract_uploads', count(*), 0) from contract_uploads;
+reset role; set app.auth_uid='00000000-0000-0000-0000-000000000007'; set role authenticated;  -- self
+select _expect('self sees own personal_info', count(*), 1) from employee_personal_info;
+select _expect('self sees own medical_info', count(*), 1) from employee_medical_info;
+select _expect('self sees own emergency_contacts', count(*), 1) from emergency_contacts;
+select _expect('self sees own contract', count(*), 1) from contract_uploads;
+reset role; set app.auth_uid='00000000-0000-0000-0000-000000000001'; set role authenticated;  -- admin
+select _expect('admin sees medical_info', count(*), 1) from employee_medical_info;
+select _expect('admin sees contract', count(*), 1) from contract_uploads;
+reset role;
+-- Write-path: a manager may NOT write a team member's tax/banking.
+set app.auth_uid='00000000-0000-0000-0000-000000000005'; set role authenticated;
+do $$ begin
+  begin
+    update employee_tax_banking set bank_name='X' where employee_id='00000000-0000-0000-0000-000000000007';
+    if found then raise exception 'RLS FAIL: manager wrote team tax_banking'; end if;
+  exception when others then if sqlerrm like 'RLS FAIL%' then raise; end if; end;
+end $$;
+reset role;
+
 -- ── 2. Expense claims: self / team-manager yes, peer no ──────────────────────
 set app.auth_uid='00000000-0000-0000-0000-000000000007'; set role authenticated;
 select _expect('werner sees own claim', count(*), 1) from expense_claims;
@@ -68,6 +93,18 @@ select _expect('employee can read policies', (count(*) > 0)::int::bigint, 1) fro
 select _expect('employee can read active docs', (count(*) > 0)::int::bigint, 1) from documents;
 reset role;
 
+-- ── 6b. Views respect RLS (security_invoker) ─────────────────────────────────
+set app.auth_uid='00000000-0000-0000-0000-000000000008'; set role authenticated;  -- peer
+select _expect('peer sees no pending-approval rows (view RLS)', count(*), 0) from pending_expense_approvals;
+reset role; set app.auth_uid='00000000-0000-0000-0000-000000000001'; set role authenticated;  -- admin
+select _expect('admin sees the pending approval (view RLS)', count(*), 1) from pending_expense_approvals;
+reset role;
+
+-- ── 6c. Default-deny invariant: every public base table has RLS enabled ──────
+select _expect('all public base tables have RLS', count(*), 0)
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity;
+
 -- ── 7. Owner protection (trigger) ────────────────────────────────────────────
 -- Non-owner admin (Ben) cannot change a role.
 set app.auth_uid='00000000-0000-0000-0000-000000000003'; set role authenticated;
@@ -76,7 +113,10 @@ do $$ begin
     update employees set role='admin' where id='00000000-0000-0000-0000-000000000007';
     raise exception 'RLS FAIL: non-owner admin changed a role';
   exception when others then
-    if sqlerrm like 'RLS FAIL%' then raise; end if;  -- otherwise expected block
+    if sqlerrm like 'RLS FAIL%' then raise; end if;
+    if sqlerrm not like 'Only an owner%' then
+      raise exception 'RLS FAIL: role change blocked by unexpected error: %', sqlerrm;
+    end if;
   end;
 end $$;
 -- Non-owner cannot demote the owner.
@@ -86,6 +126,9 @@ do $$ begin
     raise exception 'RLS FAIL: non-owner demoted the owner';
   exception when others then
     if sqlerrm like 'RLS FAIL%' then raise; end if;
+    if sqlerrm not like 'Only an owner%' then
+      raise exception 'RLS FAIL: owner-demote blocked by unexpected error: %', sqlerrm;
+    end if;
   end;
 end $$;
 reset role;

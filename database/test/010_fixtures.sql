@@ -2,9 +2,18 @@
 -- reports to Kevin (…05, manager). Liberty (…08) is a peer (same manager) who
 -- must NOT see Werner's private data.
 
--- POPIA: Werner's tax/banking (managers must never see this).
+-- POPIA: Werner's tax/banking + personal + medical + emergency + contract
+-- (managers and peers must never see any of these).
 insert into employee_tax_banking (employee_id, bank_name, account_number, consent_given)
 values ('00000000-0000-0000-0000-000000000007','FNB','62001234567',true);
+insert into employee_personal_info (employee_id, id_number)
+values ('00000000-0000-0000-0000-000000000007','9001015800087');
+insert into employee_medical_info (employee_id, medical_aid, consent_given)
+values ('00000000-0000-0000-0000-000000000007','Discovery Health',true);
+insert into emergency_contacts (employee_id, contact_order, full_name, relationship)
+values ('00000000-0000-0000-0000-000000000007',1,'Jane Taute','Spouse');
+insert into contract_uploads (employee_id, file_url, file_name)
+values ('00000000-0000-0000-0000-000000000007','sharepoint://hr/werner-contract.pdf','Werner-contract.pdf');
 
 -- Werner's submitted expense claim (manager Kevin should see; peer Liberty should not).
 insert into expense_claims (id, employee_id, claim_period, status, total_other, total_travel, total_advances, grand_total, timesheet_filename, submitted_at)
