@@ -21,7 +21,11 @@ export const ACCOM_CITY_MAX = 1500         // R per night (JHB, CPT, DBN)
 export const ACCOM_REGIONAL_MAX = 900      // R per night (smaller towns)
 
 // Onboarding
-export const TOTAL_POLICIES = 20
+// NOTE: there is intentionally NO hardcoded TOTAL_POLICIES. The policy-gate total
+// is DYNAMIC — it is always the number of seeded policies, sourced via
+// getPolicyAckState().total (= listPolicies().length) in the mock layer. A static
+// constant let the gate lift early whenever a policy was added, which is a
+// compliance hole. Always pass the dynamic count to the gate.
 export const TOTAL_SOPS = 4
 export const TOTAL_FORMS = 5
 

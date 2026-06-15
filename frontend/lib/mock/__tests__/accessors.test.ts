@@ -2,27 +2,39 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   __resetMockState,
   acknowledgePolicy,
+  createPolicy,
   getCurrentEmployee,
   getPolicyAckState,
   getTaskStatus,
+  getTotalPolicies,
   listMessages,
   listPolicies,
+  listPolicyAcknowledgements,
   listTaskStatuses,
   listTasks,
   postMessage,
+  publishPolicyVersion,
   setTaskStatus,
   startReadingPolicy,
 } from '../index'
-import { TOTAL_POLICIES } from '@/lib/constants'
 
 beforeEach(() => {
   __resetMockState()
 })
 
 describe('listPolicies', () => {
-  it('returns exactly 20 policies', () => {
-    expect(listPolicies()).toHaveLength(20)
-    expect(TOTAL_POLICIES).toBe(20)
+  it('returns all 24 policies (HR001–HR024)', () => {
+    const policies = listPolicies()
+    expect(policies).toHaveLength(24)
+    expect(policies[0].id).toBe('HR001')
+    expect(policies[policies.length - 1].id).toBe('HR024')
+  })
+
+  it('every policy carries a version and effective date', () => {
+    for (const p of listPolicies()) {
+      expect(p.version).toBeTruthy()
+      expect(p.effective).toBeTruthy()
+    }
   })
 })
 
@@ -76,11 +88,13 @@ describe('policy gate', () => {
     expect(getPolicyAckState().allAcknowledged).toBe(false)
   })
 
-  it('acking all 20 policies flips policies_completed to true', () => {
+  it('acking all policies flips policies_completed to true (dynamic total)', () => {
+    const total = getTotalPolicies()
+    expect(total).toBe(24)
     for (const policy of listPolicies()) {
       acknowledgePolicy(policy.id)
     }
-    expect(getPolicyAckState().acknowledgedCount).toBe(20)
+    expect(getPolicyAckState().acknowledgedCount).toBe(total)
     expect(getPolicyAckState().allAcknowledged).toBe(true)
     expect(getCurrentEmployee().policies_completed).toBe(true)
   })
@@ -88,6 +102,98 @@ describe('policy gate', () => {
   it('throws on an unknown policy id', () => {
     expect(() => acknowledgePolicy('does-not-exist')).toThrow(
       /Unknown policy id: does-not-exist/
+    )
+  })
+})
+
+describe('dynamic policy total (compliance gate)', () => {
+  it('getPolicyAckState().total equals the live policy count, not a constant', () => {
+    expect(getPolicyAckState().total).toBe(listPolicies().length)
+    expect(getPolicyAckState().total).toBe(24)
+  })
+
+  it('the gate would BLOCK at 23/24 — one short is not "all acknowledged"', () => {
+    const policies = listPolicies()
+    // Acknowledge all but the last policy.
+    for (const policy of policies.slice(0, -1)) {
+      acknowledgePolicy(policy.id)
+    }
+    const state = getPolicyAckState()
+    expect(state.acknowledgedCount).toBe(23)
+    expect(state.total).toBe(24)
+    expect(state.allAcknowledged).toBe(false)
+    expect(getCurrentEmployee().policies_completed).toBe(false)
+
+    // Acknowledging the 24th lifts the gate.
+    acknowledgePolicy(policies[policies.length - 1].id)
+    expect(getPolicyAckState().allAcknowledged).toBe(true)
+    expect(getCurrentEmployee().policies_completed).toBe(true)
+  })
+
+  it('creating a new policy raises the total and re-closes a lifted gate', () => {
+    for (const policy of listPolicies()) acknowledgePolicy(policy.id)
+    expect(getPolicyAckState().allAcknowledged).toBe(true)
+    expect(getCurrentEmployee().policies_completed).toBe(true)
+
+    const created = createPolicy({ title: 'Remote Work Policy' })
+    expect(created.id).toBe('HR025')
+    expect(created.code).toBe('JERA-POL-HR025')
+    expect(created.version).toBe('v1.0')
+
+    const state = getPolicyAckState()
+    expect(state.total).toBe(25)
+    expect(state.acknowledgedCount).toBe(24)
+    expect(state.allAcknowledged).toBe(false)
+    expect(getCurrentEmployee().policies_completed).toBe(false)
+  })
+})
+
+describe('publishPolicyVersion (decision D1: per-policy ack reset)', () => {
+  it('bumps the edited policy version and resets ONLY that policy ack', () => {
+    const policies = listPolicies()
+    // Acknowledge every policy first.
+    for (const policy of policies) acknowledgePolicy(policy.id)
+    expect(getPolicyAckState().allAcknowledged).toBe(true)
+
+    const target = policies[0] // HR001
+    const otherId = policies[1].id // HR002
+    const beforeVersion = target.version
+
+    const updated = publishPolicyVersion(target.id, {
+      full_text: 'Updated body for the new version.',
+    })
+
+    // Version bumped on the edited policy only.
+    expect(updated.version).not.toBe(beforeVersion)
+    expect(updated.full_text).toBe('Updated body for the new version.')
+
+    const acks = listPolicyAcknowledgements()
+    const targetAck = acks.find((a) => a.policy_id === target.id)!
+    const otherAck = acks.find((a) => a.policy_id === otherId)!
+
+    // ONLY the edited policy's ack is reset.
+    expect(targetAck.acknowledged).toBe(false)
+    expect(targetAck.acknowledged_at).toBeNull()
+    expect(targetAck.read_started_at).toBeNull()
+
+    // Every other policy stays acknowledged.
+    expect(otherAck.acknowledged).toBe(true)
+    expect(acks.filter((a) => a.acknowledged).length).toBe(policies.length - 1)
+  })
+
+  it('re-closes the gate when a previously-complete employee must re-acknowledge', () => {
+    for (const policy of listPolicies()) acknowledgePolicy(policy.id)
+    expect(getCurrentEmployee().policies_completed).toBe(true)
+
+    publishPolicyVersion(listPolicies()[0].id)
+
+    expect(getPolicyAckState().allAcknowledged).toBe(false)
+    expect(getCurrentEmployee().policies_completed).toBe(false)
+  })
+
+  it('throws on an unknown policy id', () => {
+    expect(() => publishPolicyVersion('does-not-exist')).toThrow(
+      /Unknown policy id: does-not-exist/,
     )
   })
 })
