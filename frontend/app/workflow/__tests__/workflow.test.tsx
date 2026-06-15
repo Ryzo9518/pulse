@@ -5,7 +5,10 @@ import { ToastProvider } from '@/components/ui'
 import {
   __resetMockState,
   getTaskStatus,
+  getTaskOwner,
+  setTaskOwner,
   listTasks,
+  listAssignableOwners,
 } from '@/lib/mock'
 
 import { WorkflowBoard } from '../WorkflowBoard'
@@ -14,7 +17,7 @@ import { WorkflowBoard } from '../WorkflowBoard'
 // test the board core (not the full page) so jsdom doesn't need the AppShell /
 // Sidebar layout hooks. Status assertions read back through the accessor layer.
 
-function renderBoard(role: 'employee' | 'admin') {
+function renderBoard(role: 'employee' | 'manager' | 'admin') {
   return render(
     <ToastProvider>
       <WorkflowBoard role={role} />
@@ -66,6 +69,27 @@ describe('WorkflowBoard — status transitions', () => {
       screen.getByTestId(`task-row-${PENDING_EMPLOYEE_TASK}`),
     ).toHaveAttribute('data-status', 'done')
   })
+
+  it('the status checkbox toggles a task done and back to pending', () => {
+    renderBoard('employee')
+    expect(getTaskStatus(PENDING_EMPLOYEE_TASK)?.status).toBe('pending')
+
+    fireEvent.click(screen.getByRole('button', { name: PENDING_TASK_PHASE }))
+
+    const checkbox = () =>
+      within(
+        screen.getByTestId(`task-row-${PENDING_EMPLOYEE_TASK}`),
+      ).getByRole('checkbox')
+
+    expect(checkbox()).toHaveAttribute('aria-checked', 'false')
+    fireEvent.click(checkbox())
+    expect(getTaskStatus(PENDING_EMPLOYEE_TASK)?.status).toBe('done')
+    expect(checkbox()).toHaveAttribute('aria-checked', 'true')
+
+    // Toggling again returns it to pending.
+    fireEvent.click(checkbox())
+    expect(getTaskStatus(PENDING_EMPLOYEE_TASK)?.status).toBe('pending')
+  })
 })
 
 describe('WorkflowBoard — visibility', () => {
@@ -96,13 +120,82 @@ describe('WorkflowBoard — visibility', () => {
     expect(anyRendered).toBe(true)
   })
 
-  it('admin view renders admin-only tasks (grouped by person)', () => {
+  it('admin view renders the phase accordion (not grouped by person)', () => {
     renderBoard('admin')
-    // An admin-only task should be present in the admin board.
-    const adminOnly = listTasks('admin').find((t) => t.visibility === 'admin')
-    expect(adminOnly).toBeTruthy()
+    // The five onboarding phase headers render as accordion buttons.
     expect(
-      screen.getByTestId(`task-row-${adminOnly!.id}`),
+      screen.getByRole('button', { name: /Pre-Arrival/ }),
     ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /HR Admin/ })).toBeInTheDocument()
+  })
+
+  it('manager view excludes the HR-admin phase header AND the contract task', () => {
+    renderBoard('manager')
+
+    // The HR-admin phase header must not render for a manager.
+    expect(screen.queryByRole('button', { name: /HR Admin/ })).toBeNull()
+
+    // Every HR-admin-phase task and the contract task (t7) are absent, no matter
+    // which phase is expanded.
+    const managerTasks = listTasks('manager')
+    expect(managerTasks.some((t) => t.phase_id === 'hr')).toBe(false)
+    expect(managerTasks.some((t) => t.id === 't7')).toBe(false)
+
+    // And admin would have seen both — proving the manager scope is doing work.
+    const adminTasks = listTasks('admin')
+    expect(adminTasks.some((t) => t.phase_id === 'hr')).toBe(true)
+    expect(adminTasks.some((t) => t.id === 't7')).toBe(true)
+
+    // The contract row is never in the manager DOM, even with its Day-1 phase
+    // expanded (it is manager_hidden).
+    fireEvent.click(screen.getByRole('button', { name: /Day 1 . Welcome/ }))
+    expect(screen.queryByTestId('task-row-t7')).toBeNull()
+  })
+
+  it('only admins get the owner-assignment <select>; managers do not', () => {
+    const { unmount } = renderBoard('admin')
+    // "Welcome & office tour" (t6) lives in the Day-1 phase; open it. It is a
+    // work task a manager can see too, so it's a fair comparison row.
+    fireEvent.click(screen.getByRole('button', { name: /Day 1 . Welcome/ }))
+    expect(
+      within(screen.getByTestId('task-row-t6')).getByRole('combobox'),
+    ).toBeInTheDocument()
+    unmount()
+
+    renderBoard('manager')
+    fireEvent.click(screen.getByRole('button', { name: /Day 1 . Welcome/ }))
+    expect(
+      within(screen.getByTestId('task-row-t6')).queryByRole('combobox'),
+    ).toBeNull()
+  })
+})
+
+describe('WorkflowBoard — owner assignment', () => {
+  it('changing the owner <select> updates the stored owner (admin)', () => {
+    renderBoard('admin')
+
+    // t6 (Welcome & office tour) sits in the Day-1 phase; open it first.
+    fireEvent.click(screen.getByRole('button', { name: /Day 1 . Welcome/ }))
+    const row = screen.getByTestId('task-row-t6')
+    const select = within(row).getByRole('combobox') as HTMLSelectElement
+
+    // Pick an assignable owner that is NOT the current owner.
+    const current = getTaskOwner('t6')
+    const target = listAssignableOwners().find((e) => e.id !== current)
+    expect(target).toBeTruthy()
+
+    fireEvent.change(select, { target: { value: target!.id } })
+
+    // The mutator persisted the new owner, readable through the accessor seam.
+    expect(getTaskOwner('t6')).toBe(target!.id)
+  })
+
+  it('setTaskOwner persists and can clear an assignment', () => {
+    const target = listAssignableOwners()[0]
+    setTaskOwner('t6', target.id)
+    expect(getTaskOwner('t6')).toBe(target.id)
+
+    setTaskOwner('t6', null)
+    expect(getTaskOwner('t6')).toBeNull()
   })
 })
