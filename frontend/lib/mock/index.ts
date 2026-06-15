@@ -1058,4 +1058,16 @@ export {
   ORG_PRODUCTS,
 } from './certifications'
 
+// Dashboard pure helpers (due-date maths + billable pipeline counts), re-exported
+// through the seam so the Dashboard screen imports everything from '@/lib/mock'.
+export {
+  dueInfo,
+  buildThisWeek,
+  countBillableStages,
+  countSummaryStages,
+  BILLABLE_STAGES,
+  DASHBOARD_NOW_ISO,
+} from './dashboard'
+export type { DueInfo, DueState, ThisWeekRow, ThisWeekInput } from './dashboard'
+
 export { CURRENT_EMPLOYEE_ID, ONBOARDING_EMPLOYEE_ID }
