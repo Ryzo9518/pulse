@@ -16,7 +16,6 @@ import { useSession } from '@/lib/mock/session'
 import { roleLabel } from '@/lib/capabilities'
 import {
   getPolicyAckState,
-  listMessages,
   listTasks,
   getTaskStatus,
 } from '@/lib/mock'
@@ -65,9 +64,6 @@ export function Sidebar() {
   // accessor yet); show the full set as outstanding.
   const incompleteForms = TOTAL_FORMS
 
-  // Unread chat — static for now.
-  const unreadChat = listMessages('general').length > 0 ? 3 : 0
-
   const sections: NavSection[] = [
     {
       label: 'Main',
@@ -110,14 +106,7 @@ export function Sidebar() {
     },
     {
       label: 'Comms',
-      items: [
-        {
-          href: '/chat',
-          icon: '💬',
-          label: 'Chat',
-          badge: unreadChat > 0 ? String(unreadChat) : undefined,
-        },
-      ],
+      items: [{ href: '/chat', icon: '🤖', label: 'Ask HR' }],
     },
   ]
 
