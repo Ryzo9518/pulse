@@ -52,13 +52,32 @@ insert into onboarding_tasks (id, phase_id, title, default_owner, priority, syst
  ('t38','training','Read & acknowledge all HR policies','ryan','high',null,5,'employee',false,5)
 on conflict (id) do nothing;
 
--- ── Policy metadata stubs (full 24 bodies imported at B6) ────────────────────
+-- ── All 24 HR policies (metadata; full HTML bodies imported at B6 / Word→HTML) ─
 insert into hr_policies (id, code, title, version, effective, sort_order, is_active) values
  ('HR001','JERA-POL-HR001','Code of Ethics','v2026.1','April 2026',1,true),
  ('HR002','JERA-POL-HR002','Code of Conduct','v2026.1','April 2026',2,true),
+ ('HR003','JERA-POL-HR003','Remuneration Policy','v2026.1','April 2026',3,true),
+ ('HR004','JERA-POL-HR004','Performance Management','v2026.1','April 2026',4,true),
  ('HR005','JERA-POL-HR005','Leave Policy','v2026.1','April 2026',5,true),
+ ('HR006','JERA-POL-HR006','Recruitment and Selection','v2026.1','April 2026',6,true),
+ ('HR007','JERA-POL-HR007','IT Equipment Allowance Policy','v2026.1','April 2026',7,true),
+ ('HR008','JERA-POL-HR008','Travel and Subsistence Allowance Policy','v2026.1','April 2026',8,true),
+ ('HR009','JERA-POL-HR009','Private Work After Hours Policy','v2026.1','April 2026',9,true),
+ ('HR010','JERA-POL-HR010','Contractor Policy','v2026.1','April 2026',10,true),
  ('HR011','JERA-POL-HR011','Overtime Payment Policy','v2026.1','April 2026',11,true),
- ('HR023','JERA-POL-HR023','Time Logging Policy','v1.2','April 2026',23,true)
+ ('HR012','JERA-POL-HR012','Smoking Policy','v2026.1','April 2026',12,true),
+ ('HR013','JERA-POL-HR013','Employment Equity Policy','v2026.1','April 2026',13,true),
+ ('HR014','JERA-POL-HR014','Employee Relations Policy','v2026.1','April 2026',14,true),
+ ('HR015','JERA-POL-HR015','Occupational Health and Safety','v2026.1','April 2026',15,true),
+ ('HR016','JERA-POL-HR016','Disciplinary Code','v2026.1','April 2026',16,true),
+ ('HR017','JERA-POL-HR017','Grievance Policy and Procedure','v2026.1','April 2026',17,true),
+ ('HR018','JERA-POL-HR018','Termination of Employment','v2026.1','April 2026',18,true),
+ ('HR019','JERA-POL-HR019','Retrenchment Policy','v2026.1','April 2026',19,true),
+ ('HR020','JERA-POL-HR020','Workbook for Managing Incapacity','v2026.1','April 2026',20,true),
+ ('HR021','JERA-POL-HR021','Service Delivery Framework','v2.0','April 2026',21,true),
+ ('HR022','JERA-POL-HR022','Document Management Policy','v1.0','April 2026',22,true),
+ ('HR023','JERA-POL-HR023','Time Logging Policy','v1.2','April 2026',23,true),
+ ('HR024','JERA-POL-HR024','Paternal Leave','v1.0','April 2026',24,true)
 on conflict (id) do nothing;
 
 -- ── SOPs ─────────────────────────────────────────────────────────────────────
