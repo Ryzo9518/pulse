@@ -35,7 +35,7 @@ import type {
   CertClass,
   CertVendor,
 } from '@/types/database'
-import { TOTAL_POLICIES, TOTAL_SOPS, TOTAL_FORMS } from '@/lib/constants'
+import { TOTAL_SOPS, TOTAL_FORMS } from '@/lib/constants'
 
 import {
   employees as seedEmployees,
@@ -72,6 +72,9 @@ import { certifications as seedCerts } from './certifications'
 
 // ── Module-level mutable state (cloned from seeds so seeds stay pristine) ──
 const employeeState: Employee[] = seedEmployees.map((e) => ({ ...e }))
+// Policies are mutable in this phase: an admin can edit a policy body, add a new
+// policy, and publish a new version. Cloned from the seed so the seed stays pristine.
+const policyState: HrPolicy[] = hrPolicies.map((p) => ({ ...p }))
 const ackState: HrPolicyAcknowledgement[] = seedAcks.map((a) => ({ ...a }))
 const taskStatusState: OnboardingTaskStatus[] = seedTaskStatuses.map((s) => ({
   ...s,
@@ -239,11 +242,21 @@ export function getTaskStatus(taskId: string): OnboardingTaskStatus | undefined 
 }
 
 export function listPolicies(): HrPolicy[] {
-  return hrPolicies
+  return policyState
 }
 
 export function listPolicyAcknowledgements(): HrPolicyAcknowledgement[] {
   return ackState
+}
+
+/**
+ * The total number of policies that must be acknowledged. DYNAMIC by design —
+ * it is the count of seeded/created policies, never a hardcoded constant — so
+ * adding a policy raises the bar and the gate can never lift early. The gate,
+ * progress bar, and Sidebar badge all consume this (via getPolicyAckState).
+ */
+export function getTotalPolicies(): number {
+  return policyState.length
 }
 
 /** Acknowledgement state for the current employee: acks + a done/total count. */
@@ -253,12 +266,13 @@ export function getPolicyAckState(): {
   total: number
   allAcknowledged: boolean
 } {
+  const total = policyState.length
   const acknowledgedCount = ackState.filter((a) => a.acknowledged).length
   return {
     acknowledgements: ackState,
     acknowledgedCount,
-    total: TOTAL_POLICIES,
-    allAcknowledged: acknowledgedCount >= TOTAL_POLICIES,
+    total,
+    allAcknowledged: acknowledgedCount >= total,
   }
 }
 
@@ -303,11 +317,12 @@ export function getOnboardingSummary(): AdminOnboardingSummary[] {
   return employeeState
     .filter((e) => e.status === 'onboarding')
     .map((e) => {
+      const totalPolicies = policyState.length
       const isCurrent = e.id === ONBOARDING_EMPLOYEE_ID
       const policiesDone = isCurrent
         ? ackState.filter((a) => a.acknowledged).length
         : e.policies_completed
-          ? TOTAL_POLICIES
+          ? totalPolicies
           : 0
       const claims = expenseClaims.filter((c) => c.employee_id === e.id)
       return {
@@ -323,7 +338,7 @@ export function getOnboardingSummary(): AdminOnboardingSummary[] {
         sops_done: 0,
         sops_total: TOTAL_SOPS,
         policies_done: policiesDone,
-        policies_total: TOTAL_POLICIES,
+        policies_total: totalPolicies,
         policies_completed: e.policies_completed,
         expense_claims_total: claims.length,
         expense_claims_pending: claims.filter((c) => c.status === 'submitted')
@@ -337,8 +352,9 @@ export function getOnboardingSummary(): AdminOnboardingSummary[] {
 /**
  * Acknowledge a policy for the current employee. IDEMPOTENT: acking an
  * already-acknowledged policy does not change the count. Sets acknowledged_at
- * (and read_started_at if not already set). When all 20 policies are
- * acknowledged, flips the current employee's policies_completed to true.
+ * (and read_started_at if not already set). When ALL policies are acknowledged
+ * (count >= the DYNAMIC total), flips the current employee's policies_completed
+ * to true.
  */
 export function acknowledgePolicy(policyId: string): HrPolicyAcknowledgement {
   const ack = ackState.find((a) => a.policy_id === policyId)
@@ -353,7 +369,7 @@ export function acknowledgePolicy(policyId: string): HrPolicyAcknowledgement {
   }
 
   const allAcked =
-    ackState.filter((a) => a.acknowledged).length >= TOTAL_POLICIES
+    ackState.filter((a) => a.acknowledged).length >= policyState.length
   if (allAcked) {
     const current = getCurrentEmployee()
     current.policies_completed = true
@@ -361,6 +377,129 @@ export function acknowledgePolicy(policyId: string): HrPolicyAcknowledgement {
   }
 
   return ack
+}
+
+// ── Admin policy authoring (publish / edit / create) ──────────────────────────
+
+/** The next sequential HR0NN policy id/code, based on the highest existing one. */
+function nextPolicyCode(): { id: string; code: string; n: number } {
+  const nums = policyState
+    .map((p) => Number(p.id.replace(/^HR/, '')))
+    .filter((n) => Number.isFinite(n))
+  const n = (nums.length ? Math.max(...nums) : 0) + 1
+  const id = `HR${String(n).padStart(3, '0')}`
+  return { id, code: `JERA-POL-${id}`, n }
+}
+
+/** Bump a "v1.0"/"v2.0" style version string by a major version. Non-numeric → v1.0. */
+function bumpVersion(version: string): string {
+  const match = /^v?(\d+)(?:\.(\d+))?/.exec(version ?? '')
+  if (!match) return 'v1.0'
+  const major = Number(match[1]) + 1
+  return `v${major}.0`
+}
+
+/**
+ * Publish a new version of an existing policy (admin authoring).
+ *
+ * DECISION D1: publishing a new version resets acknowledgements FOR THAT POLICY
+ * ONLY — every other policy's ack is untouched. The changed policy must be
+ * re-acknowledged by employees; unrelated policies stay acknowledged.
+ *
+ * Optionally updates the title/summary/body in the same publish. The version is
+ * bumped (or set explicitly via `version`). Because the edited policy's ack is
+ * reset, the current employee's policies_completed is recomputed and may flip
+ * back to false — closing the compliance gate until the new version is acked.
+ *
+ * Returns the updated policy.
+ */
+export function publishPolicyVersion(
+  policyId: string,
+  updates?: {
+    title?: string
+    summary?: string | null
+    full_text?: string | null
+    version?: string
+    effective?: string
+  },
+): HrPolicy {
+  const policy = policyState.find((p) => p.id === policyId)
+  if (!policy) {
+    throw new Error(`Unknown policy id: ${policyId}`)
+  }
+
+  if (updates?.title !== undefined) policy.title = updates.title
+  if (updates?.summary !== undefined) policy.summary = updates.summary
+  if (updates?.full_text !== undefined) policy.full_text = updates.full_text
+  if (updates?.effective !== undefined) policy.effective = updates.effective
+  policy.version = updates?.version ?? bumpVersion(policy.version)
+
+  // D1: reset ONLY this policy's acknowledgement(s); leave all others intact.
+  for (const ack of ackState) {
+    if (ack.policy_id === policyId) {
+      ack.acknowledged = false
+      ack.acknowledged_at = null
+      ack.read_started_at = null
+    }
+  }
+
+  // Recompute the gate: a reset ack can re-close it.
+  const allAcked =
+    ackState.filter((a) => a.acknowledged).length >= policyState.length
+  const current = getCurrentEmployee()
+  current.policies_completed = allAcked
+  current.updated_at = new Date().toISOString()
+
+  return policy
+}
+
+/**
+ * Create a brand-new policy (admin "+ New policy"). Auto-assigns the next HR0NN
+ * id/code, publishes at v1.0, and seeds an unacknowledged ack for the onboarding
+ * employee — which raises the DYNAMIC total and re-closes the gate until acked.
+ */
+export function createPolicy(input: {
+  title: string
+  summary?: string | null
+  full_text?: string | null
+  icon?: string | null
+  effective?: string
+}): HrPolicy {
+  const { id, code, n } = nextPolicyCode()
+  const policy: HrPolicy = {
+    id,
+    code,
+    title: input.title,
+    icon: input.icon ?? '📄',
+    summary: input.summary ?? null,
+    full_text: input.full_text ?? null,
+    version: 'v1.0',
+    effective: input.effective ?? 'April 2026',
+    document_url: null,
+    sort_order: policyState.length + 1,
+    is_active: true,
+    created_at: new Date().toISOString(),
+  }
+  policyState.push(policy)
+
+  // Seed an unacknowledged ack for the onboarding employee so the new policy
+  // counts toward the (now larger) total and must be acknowledged.
+  ackState.push({
+    id: `ack-${String(n).padStart(3, '0')}`,
+    employee_id: ONBOARDING_EMPLOYEE_ID,
+    policy_id: id,
+    acknowledged: false,
+    read_started_at: null,
+    acknowledged_at: null,
+  })
+
+  // Adding an unacked policy can only re-close the gate, never lift it.
+  const current = getCurrentEmployee()
+  current.policies_completed =
+    ackState.filter((a) => a.acknowledged).length >= policyState.length
+  current.updated_at = new Date().toISOString()
+
+  return policy
 }
 
 /** Record that the user has started reading a policy (sets read_started_at). */
@@ -554,6 +693,7 @@ export function __resetMockState(): void {
     employeeState.length,
     ...seedEmployees.map((e) => ({ ...e }))
   )
+  policyState.splice(0, policyState.length, ...hrPolicies.map((p) => ({ ...p })))
   ackState.splice(0, ackState.length, ...seedAcks.map((a) => ({ ...a })))
   taskStatusState.splice(
     0,

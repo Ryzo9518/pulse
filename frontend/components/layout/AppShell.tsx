@@ -7,7 +7,7 @@
 //
 // Because every in-app screen renders inside AppShell, this is also where the
 // policies gate (plan R4) is enforced app-wide: an onboarding employee who has
-// not acknowledged all 20 HR policies is redirected to /policies whenever they
+// not acknowledged all HR policies is redirected to /policies whenever they
 // land on a gated onboarding route (/workflow, /sop, /forms). The pure decision
 // lives in lib/policyGate.ts; AppShell just sources the inputs and acts on it.
 
@@ -29,14 +29,14 @@ export interface AppShellProps {
 /**
  * Enforces the policies gate on every navigation. Re-evaluates whenever the
  * route, role, or ack state changes; redirects employees off gated onboarding
- * routes until all 20 policies are acknowledged. Admins are never gated.
+ * routes until all policies are acknowledged. Admins are never gated.
  */
 function useOnboardingGate() {
   const pathname = usePathname()
   const router = useRouter()
   const { role, currentEmployee } = useSession()
 
-  // `policies_completed` flips on the 20th acknowledgement; reading it here ties
+  // `policies_completed` flips on the final acknowledgement; reading it here ties
   // the effect to the value the gate cares about so it re-runs when it changes.
   const policiesCompleted = currentEmployee?.policies_completed ?? false
 
