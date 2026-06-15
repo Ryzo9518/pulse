@@ -4,9 +4,17 @@ Context and working agreement for Claude when working in the **PULSE** repositor
 
 ## What PULSE Is
 
-An internal HR & People Operations portal for Jera staff: role-based onboarding workflows, a 20-policy mandatory-acknowledgement gate, SOP walkthroughs, onboarding forms, expense claims with an approver flow, a document library, chat/announcements, and an admin portal.
+An internal HR & People Operations portal for Jera staff: role-based onboarding workflows, a 24-policy mandatory-acknowledgement gate, SOP walkthroughs, onboarding forms, product training paths + certification tracking, expense claims with an approver flow, a staff directory, a company document library, announcements, and an admin portal.
 
-**Stack:** Next.js 14 (App Router) + Supabase + Resend + Tailwind CSS.
+**Roles (three):** Employee, Manager, Admin. Managers get *work-related* team oversight only — never payroll, never POPIA/personal data, never the employment contract. A manager can start an onboarding and track its work tasks, but the HR-admin phase (tax, banking, payroll, medical) and the contract/NDA task are hidden from them. Enforce in RLS, not just the UI. See `docs/prototype/HANDOFF.md` §2 for the full permission matrix.
+
+**Stack:** Next.js 14 (App Router) + Supabase (Postgres + RLS) + Microsoft 365 + Tailwind CSS.
+
+- **Email / notifications:** Microsoft 365 / Outlook via the Graph API. (Earlier docs named Resend; email is now Microsoft 365. The repo's `frontend/lib/resend.ts` is legacy and will be replaced by a Graph helper in the backend phase.)
+- **File storage:** SharePoint / OneDrive (Microsoft 365) — certificate PDFs, AA rate certificates, company documents, and policy source files.
+- **Auth:** Microsoft 365 SSO, mapped to the three roles, driving Supabase RLS.
+
+**Source of truth for UI:** `docs/prototype/Pulse.dc.html` (current interactive prototype) + `docs/prototype/HANDOFF.md` (implementation brief) + `docs/DESIGN_SYSTEM.md`. This supersedes the older `docs/pulse_v4_prototype.html`.
 
 ## Current Phase: Frontend First
 
@@ -15,7 +23,7 @@ We are building the **frontend before the backend**. Until further notice:
 - **Build every screen against mock/in-memory data**, not Supabase. The goal is to click through the entire app — login, dashboard, onboarding, policies, expenses, admin — with no Supabase project, no Resend account, and no env vars required.
 - Mock data lives in `frontend/lib/mock/`. Keep it realistic (real Jera-style names, the 20 policies, the 4 SOPs, sample employees).
 - The existing `frontend/lib/supabase-*.ts`, `frontend/hooks/useAuth.ts`, and `frontend/app/api/email/route.ts` are the *eventual* backend wiring. Leave them in place but do not require them to run the app. When a screen needs data, read from the mock layer.
-- **Visual source of truth:** `docs/pulse_v4_prototype.html` (pixel reference) + `docs/DESIGN_SYSTEM.md` (colours, typography, components). Match them.
+- **Visual source of truth:** `docs/prototype/Pulse.dc.html` (current interactive prototype, supersedes `docs/pulse_v4_prototype.html`) + `docs/DESIGN_SYSTEM.md` (colours, typography, components). Match them.
 - Defer Supabase schema work, auth, email, and deployment to a later "backend" phase.
 
 ## Working Agreement
