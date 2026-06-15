@@ -1,46 +1,64 @@
 import { describe, expect, it } from 'vitest'
 import {
   travelLineAmount,
+  travelRateBasis,
+  travelRateForLine,
   sumLineAmounts,
   claimTotals,
   formatRand,
+  type AaRates,
 } from '../expenseCalc'
-import { SARS_KM_RATE } from '@/lib/constants'
+
+// A representative AA certificate (Sarah's, from the prototype aaCert).
+const RATES: AaRates = { full_rate: 6.05, fixed_cost: 4.59 }
+
+describe('travelRateBasis', () => {
+  it('invoiced travel uses the full AA rate basis', () => {
+    expect(travelRateBasis(true)).toBe('full_aa')
+  })
+  it('non-invoiced travel uses the fixed-cost basis (D2: still claimable)', () => {
+    expect(travelRateBasis(false)).toBe('fixed_cost')
+  })
+})
+
+describe('travelRateForLine', () => {
+  it('invoiced -> full AA rate; non-invoiced -> fixed-cost rate', () => {
+    expect(travelRateForLine(true, RATES)).toBe(6.05)
+    expect(travelRateForLine(false, RATES)).toBe(4.59)
+  })
+  it('coerces missing/blank rates to 0 (never NaN)', () => {
+    expect(travelRateForLine(true, { full_rate: '', fixed_cost: 4.59 })).toBe(0)
+    expect(travelRateForLine(false, { full_rate: 6.05, fixed_cost: null })).toBe(0)
+    expect(
+      Number.isNaN(travelRateForLine(true, { full_rate: '', fixed_cost: '' })),
+    ).toBe(false)
+  })
+})
 
 describe('travelLineAmount', () => {
-  it('computes R150.00 for a 100 km travel line at the SARS rate', () => {
-    expect(SARS_KM_RATE).toBe(1.5)
-    expect(travelLineAmount(100)).toBe(150)
-    expect(formatRand(travelLineAmount(100))).toBe('R150.00')
+  it('computes km * rate at the supplied rate', () => {
+    // 120 km invoiced at the full AA rate 6.05 = 726.00
+    expect(travelLineAmount(120, 6.05)).toBe(726)
+    expect(formatRand(travelLineAmount(120, 6.05))).toBe('R726.00')
+    // 86 km non-invoiced at the fixed cost 4.59 = 394.74
+    expect(travelLineAmount(86, 4.59)).toBe(394.74)
   })
 
   it('returns 0 (never NaN) for 0 km, empty, null, or undefined input', () => {
-    expect(travelLineAmount(0)).toBe(0)
-    expect(travelLineAmount('')).toBe(0)
-    expect(travelLineAmount(null)).toBe(0)
-    expect(travelLineAmount(undefined)).toBe(0)
-    expect(Number.isNaN(travelLineAmount(''))).toBe(false)
-    expect(Number.isNaN(travelLineAmount(NaN))).toBe(false)
-    expect(formatRand(travelLineAmount(''))).toBe('R0.00')
+    expect(travelLineAmount(0, 6.05)).toBe(0)
+    expect(travelLineAmount('', 6.05)).toBe(0)
+    expect(travelLineAmount(null, 6.05)).toBe(0)
+    expect(travelLineAmount(undefined, 6.05)).toBe(0)
+    expect(Number.isNaN(travelLineAmount('', 6.05))).toBe(false)
+    expect(Number.isNaN(travelLineAmount(NaN, NaN))).toBe(false)
+    expect(formatRand(travelLineAmount('', 6.05))).toBe('R0.00')
   })
 
-  it('rounds a fractional km to a 2-decimal amount', () => {
-    // 33.333 km * 1.50 = 49.9995 -> 50.00
-    const amount = travelLineAmount(33.333)
-    expect(amount).toBe(50)
-    expect(formatRand(amount)).toBe('R50.00')
-
-    // 12.5 km * 1.50 = 18.75 (exact 2-decimal)
-    expect(travelLineAmount(12.5)).toBe(18.75)
-    expect(formatRand(travelLineAmount(12.5))).toBe('R18.75')
-
+  it('rounds a fractional result to a 2-decimal amount', () => {
     // 7.777 km * 1.50 = 11.6655 -> 11.67
-    expect(travelLineAmount(7.777)).toBe(11.67)
-  })
-
-  it('accepts a custom rate but defaults to SARS_KM_RATE', () => {
-    expect(travelLineAmount(10, 2)).toBe(20)
-    expect(travelLineAmount(10)).toBe(15)
+    expect(travelLineAmount(7.777, 1.5)).toBe(11.67)
+    // 12.5 km * 1.50 = 18.75 (exact)
+    expect(travelLineAmount(12.5, 1.5)).toBe(18.75)
   })
 })
 
@@ -58,40 +76,74 @@ describe('sumLineAmounts', () => {
   })
 })
 
-describe('claimTotals', () => {
-  it('grand total sums travel + other lines correctly', () => {
-    const travel = [{ km: 120 }, { km: 120 }] // 180 + 180 = 360
-    const other = [{ amount: 45 }, { amount: 185.5 }] // 230.50
-    const totals = claimTotals(travel, other)
+describe('claimTotals (three-part: incurred + travel − advances)', () => {
+  it('grand total = expenses incurred + travel − advances', () => {
+    // Sarah's prototype claim:
+    //   expenses incurred = 680 + 1499.99 = 2179.99
+    //   travel = 120*6.05 (invoiced) + 86*4.59 (non-invoiced) = 726 + 394.74 = 1120.74
+    //   advances = 3276
+    const other = [{ amount: 680 }, { amount: 1499.99 }]
+    const travel = [
+      { km: 120, invoiced: true },
+      { km: 86, invoiced: false },
+    ]
+    const advances = [{ amount: 3276 }]
+    const totals = claimTotals(travel, other, advances, RATES)
 
-    expect(totals.totalTravel).toBe(360)
-    expect(totals.totalOther).toBe(230.5)
-    expect(totals.grandTotal).toBe(590.5)
-    expect(formatRand(totals.grandTotal)).toBe('R590.50')
+    expect(totals.totalOther).toBe(2179.99)
+    expect(totals.totalTravel).toBe(1120.74)
+    expect(totals.totalAdvances).toBe(3276)
+    // 2179.99 + 1120.74 − 3276 = 24.73
+    expect(totals.grandTotal).toBe(24.73)
+    expect(formatRand(totals.grandTotal)).toBe('R24.73')
   })
 
-  it('returns all-zero totals (never NaN) for empty claims', () => {
-    const totals = claimTotals([], [])
-    expect(totals.totalTravel).toBe(0)
+  it('selects full AA rate for invoiced and fixed cost for non-invoiced travel', () => {
+    const invoicedOnly = claimTotals([{ km: 100, invoiced: true }], [], [], RATES)
+    expect(invoicedOnly.totalTravel).toBe(605) // 100 * 6.05
+
+    const fixedOnly = claimTotals([{ km: 100, invoiced: false }], [], [], RATES)
+    expect(fixedOnly.totalTravel).toBe(459) // 100 * 4.59
+  })
+
+  it('returns all-zero totals (never NaN) for an empty claim', () => {
+    const totals = claimTotals([], [], [], RATES)
     expect(totals.totalOther).toBe(0)
+    expect(totals.totalTravel).toBe(0)
+    expect(totals.totalAdvances).toBe(0)
     expect(totals.grandTotal).toBe(0)
     expect(Number.isNaN(totals.grandTotal)).toBe(false)
   })
 
-  it('ignores empty km / empty amount rows without producing NaN', () => {
-    const travel = [{ km: '' }, { km: 100 }] // 0 + 150
-    const other = [{ amount: '' }, { amount: 50 }] // 0 + 50
-    const totals = claimTotals(travel, other)
-    expect(totals.totalTravel).toBe(150)
+  it('ignores empty km / amount rows without producing NaN', () => {
+    const travel = [
+      { km: '', invoiced: true },
+      { km: 100, invoiced: true },
+    ]
+    const other = [{ amount: '' }, { amount: 50 }]
+    const advances = [{ amount: '' }, { amount: 20 }]
+    const totals = claimTotals(travel, other, advances, RATES)
+    expect(totals.totalTravel).toBe(605)
     expect(totals.totalOther).toBe(50)
-    expect(totals.grandTotal).toBe(200)
+    expect(totals.totalAdvances).toBe(20)
+    expect(totals.grandTotal).toBe(635) // 50 + 605 − 20
     expect(Number.isNaN(totals.grandTotal)).toBe(false)
   })
 
-  it('honours a per-line rate override on travel lines', () => {
-    const travel = [{ km: 10, rate: 2 }] // 20
-    const totals = claimTotals(travel, [])
+  it('honours a per-line rate override on a travel line (seed lines)', () => {
+    const travel = [{ km: 10, invoiced: true, rate: 2 }] // override -> 20, not 60.5
+    const totals = claimTotals(travel, [], [], RATES)
     expect(totals.totalTravel).toBe(20)
+  })
+
+  it('advances can exceed the claim, producing a negative grand total', () => {
+    const totals = claimTotals(
+      [{ km: 10, invoiced: false }], // 45.90
+      [{ amount: 100 }],
+      [{ amount: 500 }],
+      RATES,
+    )
+    expect(totals.grandTotal).toBe(-354.1) // 100 + 45.90 − 500
   })
 })
 

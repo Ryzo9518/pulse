@@ -9,7 +9,13 @@ export type UserRole = 'admin' | 'manager' | 'employee'
 export type EmployeeStatus = 'active' | 'onboarding' | 'probation' | 'suspended' | 'terminated'
 export type TaskStatus = 'pending' | 'inprogress' | 'done'
 export type TaskVisibility = 'employee' | 'admin' | 'both'
-export type ExpenseStatus = 'draft' | 'submitted' | 'approved' | 'declined' | 'paid'
+// 'returned' = sent back to the submitter for correction (a returnable state,
+// not a hard rejection). Renamed from the older 'declined' to match the
+// prototype's "Return for correction" approver action (HANDOFF §4).
+export type ExpenseStatus = 'draft' | 'submitted' | 'approved' | 'returned' | 'paid'
+// Which rate a travel line is reimbursed at, driven by the invoiced toggle:
+// invoiced -> the full AA rate; non-invoiced -> the fixed-cost rate.
+export type TravelRateBasis = 'full_aa' | 'fixed_cost'
 export type ExpenseRole = 'submitter' | 'approver' | 'both'
 export type SopKey = 'projects' | 'desk' | 'timekeeping' | 'client_access'
 export type FormKey = 'personal' | 'emergency' | 'tax' | 'policies' | 'goals'
@@ -231,14 +237,25 @@ export interface SopCompletion {
   completed_at: string | null
 }
 
+// A claim is three-part: expenses incurred (receipts) + travel (AA rate) −
+// advances already paid. Grand total payable = total_other + total_travel −
+// total_advances (HANDOFF §4). `timesheet_filename` records the required
+// timesheet attachment — submit is blocked until it is present.
 export interface ExpenseClaim {
   id: string
   employee_id: string
   claim_period: string | null
   status: ExpenseStatus
-  total_travel: number
+  /** Sum of "expenses incurred" (receipt) lines. */
   total_other: number
+  /** Sum of travel line totals (km × per-line rate). */
+  total_travel: number
+  /** Sum of advances already paid out — deducted from the grand total. */
+  total_advances: number
+  /** total_other + total_travel − total_advances. */
   grand_total: number
+  /** Required timesheet attachment; null until attached (blocks submit). */
+  timesheet_filename: string | null
   submitted_at: string | null
   approver_id: string | null
   reviewed_by: string | null
@@ -254,6 +271,15 @@ export interface ExpenseTravelLine {
   client_name: string
   travel_date: string | null
   reason: string | null
+  /** True -> billed/invoiced to the client -> full AA rate applies. */
+  invoiced: boolean
+  /** Invoice reference — required when invoiced. */
+  invoice_no: string | null
+  /** Invoice amount — captured when invoiced. */
+  invoice_amount: number | null
+  /** Which rate applies: 'full_aa' when invoiced, else 'fixed_cost'. */
+  rate_basis: TravelRateBasis
+  /** The per-km rate actually applied (from the AA certificate). */
   rate_per_km: number
   km_traveled: number | null
   amount: number | null
@@ -271,6 +297,45 @@ export interface ExpenseOtherLine {
   receipt_url: string | null
   sort_order: number
   created_at: string
+}
+
+// Advances already paid out (petty cash, pre-paid flights, etc.) — deducted
+// from the grand total.
+export interface ExpenseAdvanceLine {
+  id: string
+  claim_id: string
+  advance_date: string | null
+  details: string | null
+  amount: number | null
+  sort_order: number
+  created_at: string
+}
+
+// Per-person AA Vehicle Rates Certificate. Its rates DRIVE the travel math:
+// `full_rate` for invoiced client travel, `fixed_cost` for non-invoiced
+// (HANDOFF §4 / §6 maps VEHICLE/aaCert -> aa_rate_certificates).
+export interface AaRateCertificate {
+  id: string
+  employee_id: string
+  make: string
+  model: string
+  year: string
+  registration: string | null
+  /** Full AA rate (R/km) — applies to invoiced client travel. */
+  full_rate: number
+  /** Fixed-cost rate (R/km) — applies to non-invoiced travel. */
+  fixed_cost: number
+  /** Running-cost component (R/km) — informational. */
+  running_cost: number
+  /** Fuel price the certificate was calculated against (R/litre). */
+  fuel_price: number
+  /** Uploaded certificate file name; null when none on file. */
+  file_name: string | null
+  /** Certificate issue date (ISO). */
+  issued_date: string | null
+  uploaded: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface Message {
@@ -472,6 +537,8 @@ export interface Database {
       expense_claims: { Row: ExpenseClaim; Insert: Partial<ExpenseClaim>; Update: Partial<ExpenseClaim> }
       expense_travel_lines: { Row: ExpenseTravelLine; Insert: Partial<ExpenseTravelLine>; Update: Partial<ExpenseTravelLine> }
       expense_other_lines: { Row: ExpenseOtherLine; Insert: Partial<ExpenseOtherLine>; Update: Partial<ExpenseOtherLine> }
+      expense_advance_lines: { Row: ExpenseAdvanceLine; Insert: Partial<ExpenseAdvanceLine>; Update: Partial<ExpenseAdvanceLine> }
+      aa_rate_certificates: { Row: AaRateCertificate; Insert: Partial<AaRateCertificate>; Update: Partial<AaRateCertificate> }
       messages: { Row: Message; Insert: Partial<Message>; Update: Partial<Message> }
       admin_notifications: { Row: AdminNotification; Insert: Partial<AdminNotification>; Update: Partial<AdminNotification> }
       email_log: { Row: EmailLog; Insert: Partial<EmailLog>; Update: Partial<EmailLog> }

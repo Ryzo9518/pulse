@@ -22,6 +22,8 @@ import type {
   ExpenseClaim,
   ExpenseTravelLine,
   ExpenseOtherLine,
+  ExpenseAdvanceLine,
+  AaRateCertificate,
   Message,
   AdminNotification,
   Document,
@@ -54,6 +56,8 @@ import {
   expenseClaims,
   expenseTravelLines,
   expenseOtherLines,
+  expenseAdvanceLines,
+  aaRateCertificates,
 } from './expenses'
 import { messages as seedMessages, adminNotifications } from './comms'
 import { documents } from './documents'
@@ -74,6 +78,7 @@ const taskStatusState: OnboardingTaskStatus[] = seedTaskStatuses.map((s) => ({
 }))
 const messageState: Message[] = seedMessages.map((m) => ({ ...m }))
 const enrolmentState: TrainingEnrolment[] = seedEnrolments.map((e) => ({ ...e }))
+const aaCertState: AaRateCertificate[] = aaRateCertificates.map((c) => ({ ...c }))
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
@@ -252,6 +257,20 @@ export function listExpenseTravelLines(claimId: string): ExpenseTravelLine[] {
 
 export function listExpenseOtherLines(claimId: string): ExpenseOtherLine[] {
   return expenseOtherLines.filter((l) => l.claim_id === claimId)
+}
+
+export function listExpenseAdvanceLines(claimId: string): ExpenseAdvanceLine[] {
+  return expenseAdvanceLines.filter((l) => l.claim_id === claimId)
+}
+
+/**
+ * The AA Rate Certificate for an employee, or null when none is on file. Its
+ * rates drive that person's travel math (full rate invoiced, fixed non-invoiced).
+ */
+export function getAaRateCertificate(
+  employeeId: string,
+): AaRateCertificate | null {
+  return aaCertState.find((c) => c.employee_id === employeeId) ?? null
 }
 
 /** List messages, optionally filtered by channel (e.g. 'announcements', 'general'). */
@@ -449,6 +468,58 @@ export function setTrainingMilestone(
   return entry
 }
 
+/**
+ * Save (create or update) an employee's AA Rate Certificate. Mirrors the
+ * prototype's saveAaCert: positive numeric rates are kept, blanks fall back to
+ * the previous value, and saving marks the certificate as uploaded. The saved
+ * rates immediately drive that person's travel reimbursement math.
+ */
+export function saveAaRateCertificate(
+  employeeId: string,
+  patch: Partial<
+    Pick<
+      AaRateCertificate,
+      | 'make'
+      | 'model'
+      | 'year'
+      | 'registration'
+      | 'full_rate'
+      | 'fixed_cost'
+      | 'running_cost'
+      | 'fuel_price'
+      | 'file_name'
+      | 'issued_date'
+    >
+  >,
+): AaRateCertificate {
+  const now = new Date().toISOString()
+  let cert = aaCertState.find((c) => c.employee_id === employeeId)
+  if (!cert) {
+    cert = {
+      id: `aa-${aaCertState.length + 1}`,
+      employee_id: employeeId,
+      make: '',
+      model: '',
+      year: '',
+      registration: null,
+      full_rate: 0,
+      fixed_cost: 0,
+      running_cost: 0,
+      fuel_price: 0,
+      file_name: null,
+      issued_date: null,
+      uploaded: false,
+      created_at: now,
+      updated_at: now,
+    }
+    aaCertState.push(cert)
+  }
+  Object.assign(cert, patch)
+  cert.uploaded = true
+  cert.updated_at = now
+  return cert
+}
+
 // ── Test-only helper: restore all mutable state to the original seeds. ─────────
 // Not used by screens; lets unit tests run in isolation.
 export function __resetMockState(): void {
@@ -472,6 +543,11 @@ export function __resetMockState(): void {
     0,
     enrolmentState.length,
     ...seedEnrolments.map((e) => ({ ...e }))
+  )
+  aaCertState.splice(
+    0,
+    aaCertState.length,
+    ...aaRateCertificates.map((c) => ({ ...c }))
   )
 }
 
