@@ -24,16 +24,18 @@ Raymond De Kock — Managing Director            [top]
     └── Jo-ann Witten — Receptionist
 ```
 
-## Proposed Pulse roles (PENDING CONFIRMATION)
+## Pulse roles — CONFIRMED (Ryan, 2026-06-15)
 
-| Person | Title | Proposed role | Notes |
+Admin set chosen by Ryan: **Ryan de Kock, Raymond De Kock, Ben Oosthuizen.** Everyone else is Manager (if they have direct reports) or Employee.
+
+| Person | Title | Role | Notes |
 |---|---|---|---|
-| Raymond De Kock | Managing Director | Admin | Confirm |
-| Charl Haasbroek | Operations Director | Admin | Likely the primary HR/ops admin |
-| Ben Oosthuizen | Finance Manager | Admin | Expense approvals / finance |
-| Melicke Olivier | Payroll & HR software consultant | Admin | Needs payroll/HR access (roles are only employee/manager/admin → payroll access = Admin) |
-| Ryan de Kock | Business Development Manager | Admin or Manager? | System owner — confirm |
-| Kevin Maroveke | ERP Systems Manager | Manager | Manages consultants; approves expenses, schedules onboarding; NO payroll/POPIA |
+| Ryan de Kock | Business Development Manager | **Admin** | System owner |
+| Raymond De Kock | Managing Director | **Admin** | |
+| Ben Oosthuizen | Finance Manager | **Admin** | Expense approvals / finance |
+| Charl Haasbroek | Operations Director | **Manager** | Manages Melicke; team oversight only — NO payroll/POPIA/contract |
+| Kevin Maroveke | ERP Systems Manager | **Manager** | Manages the consultant team |
+| Melicke Olivier | Payroll & HR software consultant | **Employee** | ⚠ **FLAG:** as Employee she has NO payroll/POPIA/policy-publish access. For a payroll/HR consultant this is likely wrong — confirm whether she should be Admin (the only role with payroll/HR access). |
 | Werner Taute | Sage X3 Senior Consultant | Employee | |
 | Liberty Maworera | Sage X3 Senior Consultant | Employee | |
 | Riette Du Toit | Sage X3 Senior Consultant | Employee | |
@@ -43,6 +45,8 @@ Raymond De Kock — Managing Director            [top]
 | Sikolwethu Dlamini | IT & Sage Junior Consultant | Employee | |
 | Jo-ann Witten | Receptionist | Employee | |
 | Annemarie Taute | Sage 300 Payroll Manager (Systems page only) | ??? | ⚠ Not on the main org chart — confirm if a staff member + who she reports to |
+
+> **Note on the manager boundary:** Pulse has only three roles. "Manager" deliberately *cannot* see payroll/POPIA/contracts (that's the whole point of the boundary). So anyone who must touch payroll/HR/personal data needs **Admin** — there is no middle "HR-only" role. If a finer-grained HR role is ever needed, that's a future capability-model change.
 
 ## Product / system teams (for the Training module assignments)
 
