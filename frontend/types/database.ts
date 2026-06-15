@@ -187,6 +187,8 @@ export interface HrPolicy {
   icon: string | null
   summary: string | null
   full_text: string | null
+  version: string           // e.g. 'v1.0' / 'v2026.1'
+  effective: string         // human effective date, e.g. 'April 2026'
   document_url: string | null
   sort_order: number
   is_active: boolean
@@ -571,6 +573,53 @@ export interface BillableSummaryRow {
   next_milestone: MilestoneKey | null
 }
 
+// ── Certifications (product + qualification certs, expiry tracking) ───────────
+
+/**
+ * Cert class. 'product' = a vendor/product certification with an expiry that
+ * drives recertification alerts; 'graduate' = an academic qualification keyed by
+ * NQF level, with no expiry. Mirrors the cert_class enum in SCHEMA.sql.
+ */
+export type CertClass = 'product' | 'graduate'
+
+/** A recognised certifying organisation / vendor. */
+export type CertVendor = 'Sage' | 'Nectari' | 'Microsoft' | 'Yooz' | 'AWS' | 'Other'
+
+/** One certificate (product or qualification) belonging to an employee. */
+export interface Certification {
+  id: string
+  /** The employee the certificate belongs to. */
+  employee_id: string
+  cclass: CertClass
+  /** Certifying organisation — product certs only. */
+  vendor: CertVendor | null
+  /** Product the cert covers (e.g. "Sage X3") — product certs only. */
+  product: string | null
+  /** Certificate / qualification name. Required. */
+  name: string
+  /** NQF level string — qualification certs only. */
+  nqf_level: string | null
+  /** ISO date (YYYY-MM-DD) issued, or null. */
+  issued: string | null
+  /** ISO date (YYYY-MM-DD) expiry — product certs only; drives alerts. Null = no expiry. */
+  expiry: string | null
+  /** SharePoint ref to the PDF (stubbed in the mock phase). */
+  file_ref: string | null
+  created_at: string
+}
+
+/** Expiry classification state for a certificate. */
+export type CertExpiryState = 'expired' | 'soon' | 'valid' | 'none'
+
+/** Computed expiry info for a certificate (label + traffic-light state). */
+export interface CertExpiryInfo {
+  /** Human label (e.g. "Expires 30 Jun 2026", "No expiry"). */
+  label: string
+  state: CertExpiryState
+  /** Days until expiry (negative if past). Null when there is no expiry. */
+  days: number | null
+}
+
 // ── SUPABASE DATABASE TYPE (for typed client) ──
 // Developer: replace this with `npx supabase gen types typescript` output
 export interface Database {
@@ -599,6 +648,7 @@ export interface Database {
       messages: { Row: Message; Insert: Partial<Message>; Update: Partial<Message> }
       admin_notifications: { Row: AdminNotification; Insert: Partial<AdminNotification>; Update: Partial<AdminNotification> }
       email_log: { Row: EmailLog; Insert: Partial<EmailLog>; Update: Partial<EmailLog> }
+      certifications: { Row: Certification; Insert: Partial<Certification>; Update: Partial<Certification> }
       documents: { Row: Document; Insert: Partial<Document>; Update: Partial<Document> }
       document_acknowledgements: { Row: DocumentAcknowledgement; Insert: Partial<DocumentAcknowledgement>; Update: Partial<DocumentAcknowledgement> }
       audit_log: { Row: AuditLog; Insert: Partial<AuditLog>; Update: Partial<AuditLog> }

@@ -20,7 +20,7 @@ import {
   listTasks,
   getTaskStatus,
 } from '@/lib/mock'
-import { TOTAL_FORMS, TOTAL_POLICIES } from '@/lib/constants'
+import { TOTAL_FORMS } from '@/lib/constants'
 
 interface NavItem {
   href: string
@@ -56,8 +56,10 @@ export function Sidebar() {
     return status === 'pending'
   }).length
 
-  const { acknowledgedCount } = getPolicyAckState()
-  const policiesBadge = `${acknowledgedCount}/${TOTAL_POLICIES}`
+  // Dynamic total: badge always reflects the real number of policies, so adding
+  // a policy raises the denominator and the gate can never read as complete early.
+  const { acknowledgedCount, total: totalPolicies } = getPolicyAckState()
+  const policiesBadge = `${acknowledgedCount}/${totalPolicies}`
 
   // Incomplete onboarding forms — static for this phase (no per-form completion
   // accessor yet); show the full set as outstanding.
@@ -93,7 +95,10 @@ export function Sidebar() {
     },
     {
       label: 'Development',
-      items: [{ href: '/training', icon: '🎓', label: 'Training' }],
+      items: [
+        { href: '/training', icon: '🎓', label: 'Training' },
+        { href: '/certifications', icon: '🏅', label: 'Certifications' },
+      ],
     },
     {
       label: 'Finance',
