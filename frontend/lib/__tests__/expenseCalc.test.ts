@@ -159,3 +159,38 @@ describe('formatRand', () => {
     expect(formatRand(NaN)).toBe('R0.00')
   })
 })
+
+// ── Adversarial edge cases (review hardening) ─────────────────────────────────
+describe('money-math hardening', () => {
+  it('a >2-decimal rate is not double-rounded (km*rate rounded once)', () => {
+    // 100 * 6.055 = 605.5, NOT 606 (which a pre-rounded 6.06 rate would give).
+    expect(travelLineAmount(100, travelRateForLine(true, { full_rate: 6.055, fixed_cost: 4.59 }))).toBe(605.5)
+  })
+
+  it('negative km cannot offset a claim (clamped to 0)', () => {
+    expect(travelLineAmount(-100, 6.05)).toBe(0)
+    const totals = claimTotals(
+      [{ km: -100, invoiced: true }],
+      [{ amount: 200 }],
+      [],
+      RATES,
+    )
+    expect(totals.totalTravel).toBe(0)
+    expect(totals.grandTotal).toBe(200)
+  })
+
+  it('a negative receipt/advance amount is clamped to 0', () => {
+    expect(sumLineAmounts([{ amount: -50 }, { amount: 100 }])).toBe(100)
+  })
+
+  it('a per-line rate override of 0 resolves from the certificate, not R0', () => {
+    // Override 0 must not silently zero a billable invoiced line.
+    const totals = claimTotals([{ km: 100, invoiced: true, rate: 0 }], [], [], RATES)
+    expect(totals.totalTravel).toBe(605) // 100 * 6.05 full AA rate
+  })
+
+  it('a missing full rate (cert with 0) resolves to 0 for an invoiced line (caller must gate submit)', () => {
+    // The page blocks submit on this; the calc itself reports the honest 0.
+    expect(travelRateForLine(true, { full_rate: 0, fixed_cost: 4.59 })).toBe(0)
+  })
+})

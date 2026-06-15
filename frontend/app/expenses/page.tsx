@@ -406,6 +406,11 @@ function ClaimForm() {
     (r) => r.amount.trim() !== '' && r.details.trim() === '',
   )
   const timesheetMissing = timesheetName === null
+  // A travel line with distance but no resolvable per-km rate (e.g. an AA
+  // certificate with a blank/zero rate) would silently reimburse R0 — block it.
+  const travelMissingRate = travelRows.some(
+    (r) => Number(r.km) > 0 && travelRateForLine(r.invoiced, rates) <= 0,
+  )
 
   function updateOther(id: string, patch: Partial<OtherRow>) {
     setOtherRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)))
@@ -440,6 +445,17 @@ function ClaimForm() {
         variant: 'error',
         title: 'Timesheet required',
         message: 'A copy of your timesheet must accompany this claim form.',
+      })
+      return
+    }
+    // Rate gate: don't let a travel line submit at R0 because no AA rate is set.
+    if (travelMissingRate) {
+      setShowErrors(true)
+      toast({
+        variant: 'error',
+        title: 'No travel rate on file',
+        message:
+          'Add your AA Rate Certificate rates before claiming travel — the per-km rate is missing.',
       })
       return
     }

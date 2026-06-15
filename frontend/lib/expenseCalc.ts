@@ -67,6 +67,17 @@ function toNumber(value: NumericInput): number {
 }
 
 /**
+ * Coerce a numeric INPUT magnitude (km, a line amount, a rate) to a finite,
+ * non-negative number. Use for user-entered quantities that are never legitimately
+ * negative — a mistyped/pasted "-100" must not silently offset a claim. NOTE: do
+ * not use this on computed totals (e.g. the grand total, which may be negative
+ * when advances exceed the claim).
+ */
+function toAmount(value: NumericInput): number {
+  return Math.max(0, toNumber(value))
+}
+
+/**
  * Which rate basis applies to a travel line: invoiced travel claims the full AA
  * rate; non-invoiced travel claims the fixed-cost rate (D2).
  */
@@ -79,15 +90,18 @@ export function travelRateBasis(invoiced: boolean): TravelRateBasis {
  * Invoiced -> full AA rate; non-invoiced -> fixed-cost rate.
  */
 export function travelRateForLine(invoiced: boolean, rates: AaRates): number {
-  return round2(toNumber(invoiced ? rates.full_rate : rates.fixed_cost))
+  // Not pre-rounded: rounding happens once, on the line amount, so a rate with
+  // more than 2 decimals doesn't double-round (km * rate then round).
+  return toAmount(invoiced ? rates.full_rate : rates.fixed_cost)
 }
 
 /**
- * Amount for a single travel line: km * rate, rounded to 2 decimals.
- * Empty/0/invalid km -> 0.
+ * Amount for a single travel line: km * rate, rounded to 2 decimals. km and rate
+ * are clamped non-negative (a negative km can't offset the claim). Empty/0/invalid
+ * -> 0.
  */
 export function travelLineAmount(km: NumericInput, rate: NumericInput): number {
-  return round2(toNumber(km) * toNumber(rate))
+  return round2(toAmount(km) * toAmount(rate))
 }
 
 /**
@@ -100,7 +114,8 @@ export function sumLineAmounts(
   const total = lines.reduce<number>((sum, line) => {
     const raw =
       line !== null && typeof line === 'object' ? line.amount : (line as NumericInput)
-    return sum + toNumber(raw)
+    // Clamp non-negative: a negative receipt/advance entry can't offset the claim.
+    return sum + toAmount(raw)
   }, 0)
   return round2(total)
 }
@@ -120,10 +135,11 @@ export function claimTotals(
 ): ClaimTotals {
   const totalTravel = round2(
     travel.reduce((sum, line) => {
-      const rate =
-        line.rate !== undefined && line.rate !== null && line.rate !== ''
-          ? toNumber(line.rate)
-          : travelRateForLine(line.invoiced, rates)
+      // A per-line override only counts when it's a real positive rate; 0/blank
+      // means "not set" and we resolve from the cert via the invoiced toggle
+      // (so a stray 0 can't silently zero out a billable line).
+      const override = toAmount(line.rate)
+      const rate = override > 0 ? override : travelRateForLine(line.invoiced, rates)
       return sum + travelLineAmount(line.km, rate)
     }, 0),
   )
