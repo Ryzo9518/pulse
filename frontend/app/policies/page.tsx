@@ -1,42 +1,92 @@
 'use client'
 
-// ── Policies (CRITICAL GATE) screen — plan Unit 9 ─────────────────────────────
-// Lists all 20 HR policies with per-policy acknowledgement status, an overall
-// X/20 progress bar, and an expand-to-read + "I have read and understood"
-// acknowledgement flow. Acknowledging the 20th policy lifts the onboarding gate
-// (the acknowledgePolicy mutator flips currentEmployee.policies_completed to
-// true); we surface that with a success banner + toast.
+// ── Policies (CRITICAL GATE) screen — plan Unit 9 / W2 ────────────────────────
+// Lists all HR policies with per-policy acknowledgement status, an overall X/N
+// progress bar, and an expand-to-read + "I have read and understood" flow. The
+// total is DYNAMIC (getPolicyAckState().total = listPolicies().length), so the
+// gate can never lift early when a policy is added. Acknowledging the LAST policy
+// lifts the onboarding gate (acknowledgePolicy flips policies_completed to true).
 //
-// The pure gate decision lives in '@/lib/policyGate' and is wired into the
-// gated screens / Sidebar by the orchestrator in a separate integration step;
-// this screen only drives the acknowledgement state the gate reads.
+// Admin authoring (role-branched on can(role,'publishPolicies')): an admin can
+// edit a policy (rich-text/HTML body — "paste Word body here") and add a new
+// policy (+ New policy → next HR0NN code, published at v1.0). Publishing a new
+// version resets acknowledgements FOR THAT POLICY ONLY (decision D1). Non-admins
+// see the read-only list exactly as before.
+//
+// The pure gate decision lives in '@/lib/policyGate' and is wired into the gated
+// screens / Sidebar by the AppShell; this screen drives the ack state it reads.
 
 import { useMemo, useState } from 'react'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { Badge, Button, Card, ProgressBar, useToast } from '@/components/ui'
+import {
+  Badge,
+  Button,
+  Card,
+  Input,
+  Modal,
+  ProgressBar,
+  useToast,
+} from '@/components/ui'
 import {
   acknowledgePolicy,
+  createPolicy,
   getPolicyAckState,
   listPolicies,
   listPolicyAcknowledgements,
+  publishPolicyVersion,
   startReadingPolicy,
 } from '@/lib/mock'
+import { can } from '@/lib/capabilities'
 import { useSession } from '@/lib/mock/session'
 import type { HrPolicy } from '@/types/database'
 
+// Local editor form shape for the admin edit / create modals.
+interface PolicyDraft {
+  title: string
+  summary: string
+  full_text: string
+  effective: string
+}
+
+function draftFromPolicy(policy: HrPolicy): PolicyDraft {
+  return {
+    title: policy.title,
+    summary: policy.summary ?? '',
+    full_text: policy.full_text ?? '',
+    effective: policy.effective,
+  }
+}
+
+const EMPTY_DRAFT: PolicyDraft = {
+  title: '',
+  summary: '',
+  full_text: '',
+  effective: 'April 2026',
+}
+
 export default function PoliciesPage() {
   const { toast } = useToast()
-  const policies = useMemo<HrPolicy[]>(() => listPolicies(), [])
+  const { role } = useSession()
+  const isAdmin = can(role, 'publishPolicies')
 
   // A monotonically increasing tick forces a re-render after each mutation so
   // the (module-level, mutable) mock state is re-read. The mock layer is the
-  // single source of truth — we never shadow ack state in React.
-  const [, setTick] = useState(0)
+  // single source of truth — we never shadow ack/policy state in React.
+  const [tick, setTick] = useState(0)
   const refresh = () => setTick((t) => t + 1)
 
+  // policyState is mutable in this phase (admin can add/edit), so re-read on tick.
+  const policies = useMemo<HrPolicy[]>(() => listPolicies(), [tick])
+
   const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  // Admin authoring modal state. `editing` holds the policy being versioned;
+  // `creating` is true for "+ New policy". Only one is ever active.
+  const [editing, setEditing] = useState<HrPolicy | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [draft, setDraft] = useState<PolicyDraft>(EMPTY_DRAFT)
 
   const ackState = getPolicyAckState()
   const ackById = useMemo(() => {
@@ -45,7 +95,7 @@ export default function PoliciesPage() {
       map.set(a.policy_id, a.acknowledged)
     }
     return map
-  }, [ackState.acknowledgedCount, ackState.allAcknowledged])
+  }, [ackState.acknowledgedCount, ackState.allAcknowledged, tick])
 
   const { acknowledgedCount, total, allAcknowledged } = ackState
 
@@ -85,47 +135,128 @@ export default function PoliciesPage() {
     refresh()
   }
 
+  // ── Admin authoring handlers ────────────────────────────────────────────────
+
+  function openEdit(policy: HrPolicy) {
+    setCreating(false)
+    setEditing(policy)
+    setDraft(draftFromPolicy(policy))
+  }
+
+  function openCreate() {
+    setEditing(null)
+    setCreating(true)
+    setDraft(EMPTY_DRAFT)
+  }
+
+  function closeModal() {
+    setEditing(null)
+    setCreating(false)
+  }
+
+  function handlePublishEdit() {
+    if (!editing) return
+    if (!draft.title.trim()) return
+    const updated = publishPolicyVersion(editing.id, {
+      title: draft.title.trim(),
+      summary: draft.summary.trim() || null,
+      full_text: draft.full_text.trim() || null,
+      effective: draft.effective.trim() || editing.effective,
+    })
+    toast({
+      variant: 'success',
+      title: `${updated.code} published as ${updated.version}`,
+      message: 'Employees must re-acknowledge.',
+      duration: 8000,
+    })
+    closeModal()
+    refresh()
+  }
+
+  function handleCreate() {
+    if (!draft.title.trim()) return
+    const created = createPolicy({
+      title: draft.title.trim(),
+      summary: draft.summary.trim() || null,
+      full_text: draft.full_text.trim() || null,
+      effective: draft.effective.trim() || 'April 2026',
+    })
+    toast({
+      variant: 'success',
+      title: `New policy ${created.code} published (${created.version})`,
+      message: 'Employees must acknowledge the new policy.',
+      duration: 8000,
+    })
+    closeModal()
+    refresh()
+  }
+
+  function handleDownloadPdf(policy: HrPolicy) {
+    // Stub: the original .docx/PDF lives in SharePoint — wired up in the backend
+    // phase (HANDOFF §5.2). For now surface intent so the button is real.
+    toast({
+      title: 'PDF download',
+      message: `${policy.code} ${policy.version} — PDF download wires to SharePoint in a later phase.`,
+    })
+  }
+
+  const modalOpen = editing !== null || creating
+  const modalTitle = creating ? 'New policy' : `Edit ${editing?.code ?? ''}`
+
   return (
     <AppShell>
       <PageHeader
         eyebrow="Onboarding"
         title="HR Policies"
-        subtitle="Read and acknowledge all 20 policies to unlock the rest of your onboarding."
+        subtitle={
+          isAdmin
+            ? 'Publish and version company HR policies. Publishing a new version requires employees to re-acknowledge that policy.'
+            : `Read and acknowledge all ${total} policies to unlock the rest of your onboarding.`
+        }
         actions={
-          <Badge color={allAcknowledged ? 'green' : 'amber'}>
-            {allAcknowledged ? 'Complete' : `${acknowledgedCount}/${total}`}
-          </Badge>
+          isAdmin ? (
+            <Button onClick={openCreate} leftIcon={<span aria-hidden>+</span>}>
+              New policy
+            </Button>
+          ) : (
+            <Badge color={allAcknowledged ? 'green' : 'amber'}>
+              {allAcknowledged ? 'Complete' : `${acknowledgedCount}/${total}`}
+            </Badge>
+          )
         }
       />
 
       <div className="mx-auto w-full max-w-3xl px-10 py-8">
-        {/* Overall progress + gate status */}
-        <Card title="Acknowledgement progress" className="mb-6">
-          <div className="flex items-center gap-4">
-            <ProgressBar
-              value={acknowledgedCount}
-              max={total}
-              label={`${acknowledgedCount}/${total}`}
-              ariaLabel="Policies acknowledged"
-              className="flex-1"
-            />
-          </div>
-          {allAcknowledged ? (
-            <div
-              className="mt-4 rounded-btn border border-jera-green/30 bg-jera-green/10 px-4 py-3 text-[13px] font-semibold text-jera-green"
-              role="status"
-            >
-              ✓ All 20 policies acknowledged — the onboarding gate is lifted.
+        {/* Overall progress + gate status — read-only screens only */}
+        {!isAdmin ? (
+          <Card title="Acknowledgement progress" className="mb-6">
+            <div className="flex items-center gap-4">
+              <ProgressBar
+                value={acknowledgedCount}
+                max={total}
+                label={`${acknowledgedCount}/${total}`}
+                ariaLabel="Policies acknowledged"
+                className="flex-1"
+              />
             </div>
-          ) : (
-            <p className="mt-3 text-xs text-text-muted">
-              {total - acknowledgedCount}{' '}
-              {total - acknowledgedCount === 1 ? 'policy' : 'policies'} remaining.
-              You must acknowledge every policy before accessing other onboarding
-              sections.
-            </p>
-          )}
-        </Card>
+            {allAcknowledged ? (
+              <div
+                className="mt-4 rounded-btn border border-jera-green/30 bg-jera-green/10 px-4 py-3 text-[13px] font-semibold text-jera-green"
+                role="status"
+              >
+                ✓ All {total} policies acknowledged — the onboarding gate is
+                lifted.
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-text-muted">
+                {total - acknowledgedCount}{' '}
+                {total - acknowledgedCount === 1 ? 'policy' : 'policies'}{' '}
+                remaining. You must acknowledge every policy before accessing
+                other onboarding sections.
+              </p>
+            )}
+          </Card>
+        ) : null}
 
         {/* Policy list */}
         <ul className="flex flex-col gap-3" aria-label="HR policies">
@@ -151,11 +282,12 @@ export default function PoliciesPage() {
                       {policy.icon ?? '📄'}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
+                      <span className="flex flex-wrap items-center gap-2">
                         <span className="truncate text-sm font-bold text-text">
                           {policy.title}
                         </span>
-                        {acknowledged ? (
+                        <Badge color="grey">{policy.version}</Badge>
+                        {isAdmin ? null : acknowledged ? (
                           <Badge color="green">✓ Acknowledged</Badge>
                         ) : isOpen ? (
                           <Badge color="amber">Reading</Badge>
@@ -174,40 +306,84 @@ export default function PoliciesPage() {
                     </span>
                   </button>
 
-                  {/* Expanded body — full text + acknowledgement */}
+                  {/* Expanded body — meta line, full text, actions */}
                   {isOpen ? (
                     <div
                       id={`policy-body-${policy.id}`}
                       className="border-t border-surface-border-light px-5 pb-5 pt-4"
                     >
-                      <p className="text-[13px] leading-7 text-text-secondary">
+                      {/* Version + effective-date meta line + Download PDF */}
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-surface-border-light pb-3">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted">
+                          <span>
+                            <span className="font-semibold text-text-secondary">
+                              {policy.code}
+                            </span>
+                          </span>
+                          <span>
+                            Version{' '}
+                            <span className="font-mono font-semibold text-text-secondary">
+                              {policy.version}
+                            </span>
+                          </span>
+                          <span>
+                            Effective{' '}
+                            <span className="font-semibold text-text-secondary">
+                              {policy.effective}
+                            </span>
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isAdmin ? (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => openEdit(policy)}
+                            >
+                              Edit / publish
+                            </Button>
+                          ) : null}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDownloadPdf(policy)}
+                          >
+                            ⬇ Download PDF
+                          </Button>
+                        </div>
+                      </div>
+
+                      <p className="whitespace-pre-line text-[13px] leading-7 text-text-secondary">
                         {policy.full_text ?? policy.summary}
                       </p>
 
-                      <label
-                        className={`mt-4 flex items-start gap-3 rounded-btn border px-4 py-3 ${
-                          acknowledged
-                            ? 'border-jera-green/30 bg-jera-green/10'
-                            : 'cursor-pointer border-surface-border bg-surface hover:border-jera-red/40'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={acknowledged}
-                          disabled={acknowledged}
-                          onChange={() => handleAcknowledge(policy)}
-                          className="mt-[2px] h-4 w-4 flex-shrink-0 accent-jera-red"
-                          aria-label={`I have read and understood ${policy.title}`}
-                        />
-                        <span className="text-[13px] font-semibold text-text">
-                          I have read and understood this policy
-                          {acknowledged ? (
-                            <span className="ml-2 font-normal text-jera-green">
-                              ✓ acknowledged
-                            </span>
-                          ) : null}
-                        </span>
-                      </label>
+                      {/* Acknowledge control — read-only (non-admin) screens only */}
+                      {!isAdmin ? (
+                        <label
+                          className={`mt-4 flex items-start gap-3 rounded-btn border px-4 py-3 ${
+                            acknowledged
+                              ? 'border-jera-green/30 bg-jera-green/10'
+                              : 'cursor-pointer border-surface-border bg-surface hover:border-jera-red/40'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={acknowledged}
+                            disabled={acknowledged}
+                            onChange={() => handleAcknowledge(policy)}
+                            className="mt-[2px] h-4 w-4 flex-shrink-0 accent-jera-red"
+                            aria-label={`I have read and understood ${policy.title}`}
+                          />
+                          <span className="text-[13px] font-semibold text-text">
+                            I have read and understood this policy
+                            {acknowledged ? (
+                              <span className="ml-2 font-normal text-jera-green">
+                                ✓ acknowledged
+                              </span>
+                            ) : null}
+                          </span>
+                        </label>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -216,8 +392,8 @@ export default function PoliciesPage() {
           })}
         </ul>
 
-        {/* Footer CTA once the gate lifts */}
-        {allAcknowledged ? (
+        {/* Footer CTA once the gate lifts — read-only screens only */}
+        {!isAdmin && allAcknowledged ? (
           <div className="mt-6 flex justify-end">
             <Button onClick={() => window.location.assign('/dashboard')}>
               Continue onboarding →
@@ -225,6 +401,94 @@ export default function PoliciesPage() {
           </div>
         ) : null}
       </div>
+
+      {/* Admin authoring modal (edit existing or create new) */}
+      <Modal
+        open={modalOpen}
+        onClose={closeModal}
+        eyebrow={creating ? 'Authoring' : `Publish · ${editing?.version ?? ''}`}
+        title={modalTitle}
+        maxWidth="lg"
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeModal}>
+              Cancel
+            </Button>
+            {creating ? (
+              <Button onClick={handleCreate} disabled={!draft.title.trim()}>
+                Create &amp; publish v1.0
+              </Button>
+            ) : (
+              <Button
+                onClick={handlePublishEdit}
+                disabled={!draft.title.trim()}
+              >
+                Publish new version
+              </Button>
+            )}
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          {!creating && editing ? (
+            <p className="rounded-btn border border-jera-amber/30 bg-jera-amber/10 px-4 py-3 text-xs font-semibold text-jera-amber">
+              Publishing bumps {editing.code} from {editing.version} and resets
+              acknowledgements for this policy only — employees must
+              re-acknowledge it.
+            </p>
+          ) : null}
+
+          <Input
+            label="Title"
+            value={draft.title}
+            onChange={(e) =>
+              setDraft((d) => ({ ...d, title: e.target.value }))
+            }
+            placeholder="e.g. Remote Work Policy"
+          />
+
+          <Input
+            label="Effective date"
+            value={draft.effective}
+            onChange={(e) =>
+              setDraft((d) => ({ ...d, effective: e.target.value }))
+            }
+            placeholder="e.g. April 2026"
+          />
+
+          <Input
+            label="Summary"
+            value={draft.summary}
+            onChange={(e) =>
+              setDraft((d) => ({ ...d, summary: e.target.value }))
+            }
+            placeholder="One-line summary shown in the list"
+          />
+
+          <div className="flex flex-col">
+            <label
+              htmlFor="policy-body"
+              className="mb-[5px] block text-[13px] font-semibold text-text-secondary"
+            >
+              Policy body
+            </label>
+            <textarea
+              id="policy-body"
+              value={draft.full_text}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, full_text: e.target.value }))
+              }
+              rows={12}
+              placeholder="Paste the Word document body here (rich text / HTML supported)…"
+              className="w-full rounded-btn border-[1.5px] border-surface-border bg-white px-[14px] py-[11px] font-display text-sm leading-7 text-text outline-none transition-all duration-200 focus:border-jera-red focus:ring-2 focus:ring-jera-red/20"
+            />
+            <span className="mt-[5px] text-xs text-text-muted">
+              On the real build this is converted from the uploaded .docx
+              (HANDOFF §5.3). For now, paste the body text.
+            </span>
+          </div>
+        </div>
+      </Modal>
     </AppShell>
   )
 }

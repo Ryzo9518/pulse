@@ -187,6 +187,8 @@ export interface HrPolicy {
   icon: string | null
   summary: string | null
   full_text: string | null
+  version: string           // e.g. 'v1.0' / 'v2026.1'
+  effective: string         // human effective date, e.g. 'April 2026'
   document_url: string | null
   sort_order: number
   is_active: boolean
