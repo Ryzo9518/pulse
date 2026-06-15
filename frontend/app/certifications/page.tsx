@@ -95,7 +95,8 @@ export default function CertificationsPage() {
   const [, forceRender] = useReducer((n: number) => n + 1, 0)
 
   const isStaff = role === 'admin' || role === 'manager'
-  const canManage = can(role, 'uploadCertificates') // admin-only
+  const canManage = can(role, 'uploadCertificates') // admin: manage anyone's certs
+  const canUploadOwn = can(role, 'uploadOwnCertificates') // every role: own certs
 
   const [filter, setFilter] = useState<FilterKey>('all')
   const [vendorFilter, setVendorFilter] = useState<string>('all')
@@ -202,7 +203,9 @@ export default function CertificationsPage() {
       return
     }
     const input: CertificationInput = {
-      employee_id: draft.employee_id,
+      // Non-admins can only ever file a certificate against themselves — never
+      // another person — regardless of what the draft holds.
+      employee_id: canManage ? draft.employee_id : employeeId,
       cclass: draft.cclass,
       vendor: draft.vendor,
       product: draft.product,
@@ -276,7 +279,7 @@ export default function CertificationsPage() {
         title="Certifications"
         subtitle="Product & qualification certificates — uploaded, verified and tracked for expiry"
         actions={
-          canManage ? (
+          canUploadOwn ? (
             <Button onClick={() => openEditor()} leftIcon={<span aria-hidden>＋</span>}>
               Upload certificate
             </Button>
@@ -379,15 +382,26 @@ export default function CertificationsPage() {
 
         {/* Cert cards grid */}
         {cards.length === 0 ? (
-          <EmptyState
-            icon="🏅"
-            title="No certificates"
-            description={
-              filter === 'expiring'
-                ? 'Nothing is expiring or expired right now.'
-                : 'No certificates match the current filters.'
-            }
-          />
+          <div className="flex flex-col items-center gap-4">
+            <EmptyState
+              icon="🏅"
+              title={scoped.length === 0 ? 'No certificates yet' : 'No certificates'}
+              description={
+                scoped.length === 0
+                  ? canUploadOwn
+                    ? 'Add your product and qualification certificates here to track them and their expiry.'
+                    : 'No certificates are on file yet.'
+                  : filter === 'expiring'
+                    ? 'Nothing is expiring or expired right now.'
+                    : 'No certificates match the current filters.'
+              }
+            />
+            {scoped.length === 0 && canUploadOwn ? (
+              <Button onClick={() => openEditor()} leftIcon={<span aria-hidden>＋</span>}>
+                Upload your first certificate
+              </Button>
+            ) : null}
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 min-[680px]:grid-cols-2 min-[1100px]:grid-cols-3">
             {cards.map((c) => (
@@ -396,7 +410,7 @@ export default function CertificationsPage() {
                 cert={c}
                 selectable={isStaff}
                 selected={!!selected[c.id]}
-                canManage={canManage}
+                canEdit={canManage || c.employee_id === employeeId}
                 onSelect={() => toggleSelect(c.id)}
                 onEdit={() => openEditor(c)}
                 onView={() =>
@@ -429,7 +443,7 @@ function CertCard({
   cert,
   selectable,
   selected,
-  canManage,
+  canEdit,
   onSelect,
   onEdit,
   onView,
@@ -437,7 +451,7 @@ function CertCard({
   cert: Certification
   selectable: boolean
   selected: boolean
-  canManage: boolean
+  canEdit: boolean
   onSelect: () => void
   onEdit: () => void
   onView: () => void
@@ -498,7 +512,7 @@ function CertCard({
           <Button variant="ghost" size="sm" onClick={onView}>
             View
           </Button>
-          {canManage ? (
+          {canEdit ? (
             <Button variant="ghost" size="sm" onClick={onEdit}>
               Edit
             </Button>

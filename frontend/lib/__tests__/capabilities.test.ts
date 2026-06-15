@@ -19,6 +19,7 @@ const ALL_CAPABILITIES: Capability[] = [
   'viewPayrollTasks',
   'viewPersonalData',
   'uploadCertificates',
+  'uploadOwnCertificates',
   'assignTaskOwners',
   'publishPolicies',
   'uploadDocuments',
@@ -26,9 +27,9 @@ const ALL_CAPABILITIES: Capability[] = [
 ]
 
 describe('capabilities', () => {
-  it('an employee has no elevated capabilities', () => {
+  it('an employee can only manage their OWN certificates, nothing else', () => {
     for (const cap of ALL_CAPABILITIES) {
-      expect(can('employee', cap)).toBe(false)
+      expect(can('employee', cap)).toBe(cap === 'uploadOwnCertificates')
     }
   })
 
@@ -36,6 +37,15 @@ describe('capabilities', () => {
     expect(can('manager', 'viewTeam')).toBe(true)
     expect(can('manager', 'approveExpenses')).toBe(true)
     expect(can('manager', 'scheduleOnboarding')).toBe(true)
+  })
+
+  it('every role can upload their own certificates, but only admin uploads for others', () => {
+    expect(can('employee', 'uploadOwnCertificates')).toBe(true)
+    expect(can('manager', 'uploadOwnCertificates')).toBe(true)
+    expect(can('admin', 'uploadOwnCertificates')).toBe(true)
+    expect(can('employee', 'uploadCertificates')).toBe(false)
+    expect(can('manager', 'uploadCertificates')).toBe(false)
+    expect(can('admin', 'uploadCertificates')).toBe(true)
   })
 
   it('a manager NEVER sees payroll, personal data, or the contract', () => {
