@@ -1,7 +1,11 @@
 // Auto-generated types matching pulse_v5_schema.sql
 // Developer: regenerate with `npx supabase gen types typescript` after schema changes
 
-export type UserRole = 'admin' | 'employee'
+// Three roles. 'manager' gets work-related team oversight only — never payroll,
+// POPIA/personal data, or the employment contract (see frontend/lib/capabilities.ts
+// and HANDOFF §2). In this mock phase the role is chosen via the dev RoleSwitch;
+// production resolves it from the authenticated M365 identity.
+export type UserRole = 'admin' | 'manager' | 'employee'
 export type EmployeeStatus = 'active' | 'onboarding' | 'probation' | 'suspended' | 'terminated'
 export type TaskStatus = 'pending' | 'inprogress' | 'done'
 export type TaskVisibility = 'employee' | 'admin' | 'both'
@@ -117,6 +121,13 @@ export interface OnboardingTask {
   system: string | null
   days_offset: number
   visibility: TaskVisibility
+  /**
+   * Hidden from the 'manager' role even though it may otherwise be work-visible.
+   * Used for confidential tasks a manager must never see (e.g. the employment
+   * contract / NDA). The HR-admin phase is hidden separately by phase_id. See
+   * listTasks() in lib/mock and HANDOFF §2.
+   */
+  manager_hidden?: boolean
   sort_order: number
 }
 

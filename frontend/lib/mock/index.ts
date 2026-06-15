@@ -92,6 +92,17 @@ export function getEmployee(id: string): Employee | undefined {
   return employeeState.find((e) => e.id === id)
 }
 
+/**
+ * Employees who report directly to `managerId` — a manager's team. Used by the
+ * manager roster ("My Team"). An empty/unknown id returns [] (never the whole
+ * roster), so a missing session can't widen the scope. The backend phase
+ * replaces this with an RLS-scoped query.
+ */
+export function listTeam(managerId: string): Employee[] {
+  if (!managerId) return []
+  return employeeState.filter((e) => e.manager_id === managerId)
+}
+
 // ── Training / certification (Sage Intacct billable-readiness tracker) ────────
 
 /** All bookable Sage U instructor-led sessions. */
@@ -158,17 +169,34 @@ export function getBillableSummary(): BillableSummaryRow[] {
   })
 }
 
-export function listPhases(): OnboardingPhase[] {
+/**
+ * List onboarding phases visible to the given role.
+ * - 'manager' never sees the HR-admin phase (tax/banking/payroll/medical — POPIA
+ *   + payroll). 'employee' and 'admin' (and the default no-arg call) see all
+ *   phases; phase-level employee/admin filtering happens via task visibility.
+ */
+export function listPhases(role?: UserRole): OnboardingPhase[] {
+  if (role === 'manager') {
+    return onboardingPhases.filter((p) => p.id !== 'hr')
+  }
   return onboardingPhases
 }
 
 /**
  * List onboarding tasks visible to the given role.
  * - 'employee' sees 'employee' + 'both' (NOT 'admin'-only tasks).
+ * - 'manager' sees work tasks for oversight, but NEVER the HR-admin phase
+ *   (payroll/tax/banking/medical) or `manager_hidden` tasks (the employment
+ *   contract / NDA). See HANDOFF §2 — enforce in RLS too, not just the UI.
  * - 'admin' sees everything.
  */
 export function listTasks(role: UserRole): OnboardingTask[] {
   if (role === 'admin') return onboardingTasks
+  if (role === 'manager') {
+    return onboardingTasks.filter(
+      (t) => t.phase_id !== 'hr' && !t.manager_hidden,
+    )
+  }
   return onboardingTasks.filter((t) => t.visibility !== 'admin')
 }
 

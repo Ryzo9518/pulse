@@ -28,7 +28,7 @@ export const onboardingTasks: OnboardingTask[] = [
   { id: 't4', phase_id: 'pre', title: 'Prepare laptop / workstation', default_owner: 'siko', priority: 'high', system: null, days_offset: -1, visibility: 'admin', sort_order: 4 },
   // Day 1 (mixed visibility)
   { id: 't6', phase_id: 'day1', title: 'Welcome & office tour', default_owner: 'ryan', priority: 'high', system: null, days_offset: 0, visibility: 'both', sort_order: 1 },
-  { id: 't7', phase_id: 'day1', title: 'Sign employment contract & NDA', default_owner: 'hr', priority: 'high', system: null, days_offset: 0, visibility: 'both', sort_order: 2 },
+  { id: 't7', phase_id: 'day1', title: 'Sign employment contract & NDA', default_owner: 'hr', priority: 'high', system: null, days_offset: 0, visibility: 'both', manager_hidden: true, sort_order: 2 },
   { id: 't9', phase_id: 'day1', title: 'Issue Jera clothing (Week 1-2)', default_owner: 'joann', priority: 'medium', system: null, days_offset: 7, visibility: 'admin', sort_order: 3 },
   { id: 't10', phase_id: 'day1', title: 'Create Jera email address', default_owner: 'siko', priority: 'high', system: 'microsoft', days_offset: 0, visibility: 'admin', sort_order: 4 },
   // IT Setup (admin tasks)
