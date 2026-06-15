@@ -31,6 +31,9 @@ import type {
   BillableMilestone,
   BillableSummaryRow,
   MilestoneKey,
+  Certification,
+  CertClass,
+  CertVendor,
 } from '@/types/database'
 import { TOTAL_SOPS, TOTAL_FORMS } from '@/lib/constants'
 
@@ -65,6 +68,7 @@ import {
   findSession,
   formatSessionLabel,
 } from './training'
+import { certifications as seedCerts } from './certifications'
 
 // ── Module-level mutable state (cloned from seeds so seeds stay pristine) ──
 const employeeState: Employee[] = seedEmployees.map((e) => ({ ...e }))
@@ -77,6 +81,7 @@ const taskStatusState: OnboardingTaskStatus[] = seedTaskStatuses.map((s) => ({
 }))
 const messageState: Message[] = seedMessages.map((m) => ({ ...m }))
 const enrolmentState: TrainingEnrolment[] = seedEnrolments.map((e) => ({ ...e }))
+const certState: Certification[] = seedCerts.map((c) => ({ ...c }))
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
@@ -170,6 +175,31 @@ export function getBillableSummary(): BillableSummaryRow[] {
     if (b.certified_date) return 1
     return a.display_name.localeCompare(b.display_name)
   })
+}
+
+// ── Certifications ────────────────────────────────────────────────────────────
+
+/**
+ * Certificates visible to the given viewer, by role (HANDOFF §2/§3):
+ * - 'employee' → only their own certs.
+ * - 'manager' → their team's certs (direct reports, via manager_id). A missing
+ *   managerId returns [] so a missing session can't widen the scope.
+ * - 'admin' → all certs.
+ * The backend phase replaces this with an RLS-scoped query.
+ */
+export function listCertifications(
+  role: UserRole,
+  employeeId: string,
+  managerId?: string,
+): Certification[] {
+  if (role === 'admin') return certState
+  if (role === 'manager') {
+    if (!managerId) return []
+    const teamIds = new Set(listTeam(managerId).map((e) => e.id))
+    return certState.filter((c) => teamIds.has(c.employee_id))
+  }
+  if (!employeeId) return []
+  return certState.filter((c) => c.employee_id === employeeId)
 }
 
 /**
@@ -588,6 +618,73 @@ export function setTrainingMilestone(
   return entry
 }
 
+/** Fields a caller supplies when creating or editing a certificate. */
+export interface CertificationInput {
+  employee_id: string
+  cclass: CertClass
+  vendor?: CertVendor | null
+  product?: string | null
+  name: string
+  nqf_level?: string | null
+  issued?: string | null
+  expiry?: string | null
+  file_ref?: string | null
+}
+
+/**
+ * Create or update a certificate. Pass an existing id to edit; omit (or null) to
+ * create. Normalises class-specific fields: product certs keep vendor/product/
+ * expiry and drop nqf_level; qualification certs keep nqf_level and drop the
+ * product fields. Throws if name or employee_id is missing (validation parity
+ * with the editor). Returns the saved record.
+ */
+export function saveCertification(
+  input: CertificationInput,
+  id?: string | null,
+): Certification {
+  const name = input.name.trim()
+  if (!name) throw new Error('Certificate name is required')
+  if (!input.employee_id) throw new Error('Certificate person is required')
+
+  const isProduct = input.cclass === 'product'
+  const fileRef =
+    input.file_ref?.trim() ||
+    `${name.replace(/[^a-z0-9]+/gi, '_')}.pdf`
+
+  const fields = {
+    employee_id: input.employee_id,
+    cclass: input.cclass,
+    vendor: isProduct ? (input.vendor ?? null) : null,
+    product: isProduct ? (input.product ?? null) : null,
+    name,
+    nqf_level: isProduct ? null : (input.nqf_level ?? null),
+    issued: input.issued || null,
+    expiry: isProduct ? (input.expiry || null) : null,
+    file_ref: fileRef,
+  }
+
+  if (id) {
+    const existing = certState.find((c) => c.id === id)
+    if (!existing) throw new Error(`Unknown certificate id: ${id}`)
+    Object.assign(existing, fields)
+    return existing
+  }
+
+  const created: Certification = {
+    id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    ...fields,
+    created_at: new Date().toISOString(),
+  }
+  certState.unshift(created)
+  return created
+}
+
+/** Remove a certificate by id. Idempotent — unknown ids are a no-op. */
+export function deleteCertification(id: string): void {
+  const i = certState.findIndex((c) => c.id === id)
+  if (i >= 0) certState.splice(i, 1)
+}
+
 // ── Test-only helper: restore all mutable state to the original seeds. ─────────
 // Not used by screens; lets unit tests run in isolation.
 export function __resetMockState(): void {
@@ -613,10 +710,24 @@ export function __resetMockState(): void {
     enrolmentState.length,
     ...seedEnrolments.map((e) => ({ ...e }))
   )
+  certState.splice(0, certState.length, ...seedCerts.map((c) => ({ ...c })))
 }
 
 // Presentation-only formatters (no data access) re-exported through the seam so
 // screens still import everything from '@/lib/mock'.
 export { formatDate, formatDateRange, formatSessionLabel } from './training'
+
+// Certification pure helpers + taxonomy, re-exported through the seam so screens
+// import everything cert-related from '@/lib/mock'.
+export {
+  certExpiryInfo,
+  sortCertsByUrgency,
+  needsRecert,
+  formatCertDate,
+  productsForOrg,
+  CERT_VENDORS,
+  NQF_LEVELS,
+  ORG_PRODUCTS,
+} from './certifications'
 
 export { CURRENT_EMPLOYEE_ID, ONBOARDING_EMPLOYEE_ID }

@@ -95,7 +95,10 @@ export function Sidebar() {
     },
     {
       label: 'Development',
-      items: [{ href: '/training', icon: '🎓', label: 'Cert Tracker' }],
+      items: [
+        { href: '/training', icon: '🎓', label: 'Cert Tracker' },
+        { href: '/certifications', icon: '🏅', label: 'Certifications' },
+      ],
     },
     {
       label: 'Finance',
