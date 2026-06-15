@@ -21,8 +21,10 @@ export type Capability =
   | 'viewPayrollTasks'
   /** See POPIA / personal data (phone, ID, banking) on other employees. */
   | 'viewPersonalData'
-  /** Upload or edit certificates, including for other people. */
+  /** Upload or edit certificates, including for other people (admin). */
   | 'uploadCertificates'
+  /** Upload or edit one's OWN certificates (every role — self-service). */
+  | 'uploadOwnCertificates'
   /** Reassign onboarding task owners. */
   | 'assignTaskOwners'
   /** Publish / version policies. */
@@ -41,6 +43,7 @@ const ADMIN_CAPABILITIES: readonly Capability[] = [
   'viewPayrollTasks',
   'viewPersonalData',
   'uploadCertificates',
+  'uploadOwnCertificates',
   'assignTaskOwners',
   'publishPolicies',
   'uploadDocuments',
@@ -51,10 +54,15 @@ const MANAGER_CAPABILITIES: readonly Capability[] = [
   'viewTeam',
   'approveExpenses',
   'scheduleOnboarding',
+  'uploadOwnCertificates',
 ]
 
+// Every role can manage their OWN certificates (self-service); admins/managers
+// layer their extra capabilities on top.
+const EMPLOYEE_CAPABILITIES: readonly Capability[] = ['uploadOwnCertificates']
+
 const CAPABILITIES: Record<UserRole, ReadonlySet<Capability>> = {
-  employee: new Set(),
+  employee: new Set(EMPLOYEE_CAPABILITIES),
   manager: new Set(MANAGER_CAPABILITIES),
   admin: new Set(ADMIN_CAPABILITIES),
 }
