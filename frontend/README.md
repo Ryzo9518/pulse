@@ -17,9 +17,10 @@ Then open http://localhost:3000 in your browser.
 ## What phase this is
 
 This is the **frontend-first, mock-data phase**. Everything you see on screen
-is driven by built-in sample data. There is **no Supabase, no Resend, and no
-environment variables required** to run it. The real backend gets wired in
-during a later phase.
+is driven by built-in sample data. There is **no Supabase, no Microsoft 365,
+and no environment variables required** to run it. The real backend — Supabase
+(Postgres + RLS), Microsoft 365 SSO + Outlook/Graph email, and SharePoint /
+OneDrive file storage — gets wired in during a later phase.
 
 - The mock data lives in `lib/mock/`, behind a single accessor "seam"
   (`lib/mock/index.ts`). Screens only read through that seam, so the future

@@ -13,10 +13,11 @@
 2. Go to **SQL Editor → New Query**
 3. Paste the entire contents of `pulse_supabase_schema.sql`
 4. Click **Run** — this creates all tables, indexes, RLS policies, triggers, and seed data in one go
-5. Create Ryan's auth account in **Authentication → Users → Add User** (`ryan@jera.co.za`)
+5. Create Ryan's auth account (Microsoft 365 SSO is the production sign-in; map the M365 identity to the `admin` role)
 6. Copy Ryan's UUID from the auth user list
 7. Uncomment the seed INSERT in section 18 of the SQL file, replace the UUID, and run it
-8. Create Storage buckets: `documents` and `receipts` in **Storage → New Bucket**
+
+> **File storage:** PULSE stores files (documents, receipt slips, certificate PDFs, AA Rate Certificates, policy source files) in **SharePoint / OneDrive (Microsoft 365)**, not Supabase Storage buckets. Tables hold the SharePoint item references, not bucket paths.
 
 ---
 
@@ -43,13 +44,16 @@
 | 17 | `expense_claims` | Expense claim headers with status tracking | Own + admin |
 | 18 | `expense_travel_lines` | Travel claim line items (km rate, distance, amount) | Via parent claim |
 | 19 | `expense_other_lines` | Other expense line items with receipt URLs | Via parent claim |
-| 20 | `messages` | Chat & announcements (two channels) | All read, announcements admin-only write |
+| 20 | `messages` | Ask HR Pulse Assistant conversation history (AI helper, not team chat — Teams handles messaging) | Own + admin |
 | 21 | `meeting_requests` | Meeting requests between employees | Requester + recipient + admin |
 | 22 | `admin_notifications` | Broadcast notifications from admin | All read, admin write |
 | 23 | `documents` | Document library files (contracts, SOPs, templates) | All read active, admin manage |
 | 24 | `document_acknowledgements` | Tracks who has viewed/acknowledged a document | Own + admin |
-| 25 | `policy_acknowledgements` | Tracks who has acknowledged company policies | Own + admin |
+| 25 | `policy_acknowledgements` | Tracks who has acknowledged each of the 24 HR policies | Own + admin |
 | 26 | `audit_log` | All important actions for admin dashboard | Admin read only |
+| 27 | `training_paths` / `training_modules` / `training_progress` | Per-product Sage U learning paths, typed modules, and per-consultant progress + ILT date (drives the 4-stage billable ladder) | Own read; manager/admin team read |
+| 28 | `certifications` | Product + NQF qualification certs with expiry; feeds recertification alerts + tender packs | Own + manager/admin team read; own upload, admin uploads for others |
+| 29 | `aa_rate_certificates` | Per-person AA Vehicle Rates Certificate setting travel reimbursement rates | Own + admin |
 
 ---
 
@@ -76,16 +80,16 @@ Three SOPs seeded: Zoho Projects (7 steps), Zoho Desk (8 steps), Timekeeping/Mem
 Balances are created per employee per year with BCEA defaults (15 annual, 15 sick per 36-month cycle, 3 family responsibility). Leave requests flow through an approval workflow: employee submits → admin approves/declines. **Admin dashboard shows pending leave requests.**
 
 ### expense_claims / expense_travel_lines / expense_other_lines
-Three-table structure matching Jera's actual expense claim form. Claims have a status workflow (draft → submitted → approved → declined → paid). Travel lines include the SARS km rate (R4.64/km default). **Admin sees submitted claims awaiting approval.**
+Multi-table structure matching Jera's actual expense claim form. Claims have a status workflow (draft → submitted → approved → declined → paid). Travel is reimbursed at the consultant's **AA Vehicle Rates Certificate** rate — **full AA rate** for travel invoiced to a client, **fixed-cost** rate for non-invoiced travel (non-invoiced travel may not be claimed). The grand total payable = expenses incurred + travel − advances. Receipt slips and a timesheet copy are attached per claim (stored in SharePoint / OneDrive). Per-person AA rates come from the uploaded AA Rate Certificate. **Managers and admins see submitted claims awaiting approval.**
 
 ### messages
-Two channels: `announcements` (admin-only posting) and `general` (open chat). RLS ensures only admins can post announcements.
+Stores the **Ask HR Pulse Assistant** conversation history (the in-app AI helper grounded on the policy corpus). This is **not** a team chat — team messaging lives in Microsoft Teams, and company-wide announcements use `admin_notifications` / Notify All. Each user sees their own conversation; admins can see all.
 
 ### meeting_requests
 Employee-initiated meeting requests. Both the requester and recipient can see them. Admin sees all. Status workflow: pending → confirmed/declined/cancelled.
 
 ### documents / document_acknowledgements
-The document library. Files stored in Supabase Storage, metadata in this table. Categories match the frontend: contracts & policies, timesheets & invoicing, job descriptions, SOPs & procedures, employee forms. Acknowledgements track who has opened/reviewed each document.
+The document library. Files are stored in **SharePoint / OneDrive (Microsoft 365)**; this table holds the metadata and SharePoint item reference. Categories match the frontend: contracts & policies, timesheets & invoicing, job descriptions, SOPs & procedures, employee forms. Acknowledgements track who has opened/reviewed each document. Only admins upload or delete documents; everyone else has read access.
 
 ### audit_log
 The central tracking table for the admin dashboard. Every important action logs here with a JSONB `detail` field for flexible payloads. Actions include:
@@ -101,21 +105,26 @@ The central tracking table for the admin dashboard. Every important action logs 
 
 ## Row Level Security (RLS) Summary
 
-Every table has RLS enabled. The pattern is:
+Every table has RLS enabled. There are **three roles** — Employee, Manager, Admin — resolved from the Microsoft 365 SSO identity. The pattern is:
 
 | Who | Can See | Can Write |
 |-----|---------|-----------|
-| **Employee** | Own records only | Own records (insert/update where applicable) |
-| **Admin** | All records | All records + exclusive actions (create employees, approve leave, broadcast notifications) |
+| **Employee** | Own records only | Own records (insert/update where applicable); can upload own certificates |
+| **Manager** | Own records + their team's **work-related** data (onboarding work tasks, training, certifications) | Approve expense claims, schedule onboarding for their team |
+| **Admin** | All records | All records + exclusive actions (manage employees, approve claims, broadcast notifications, version policies, upload/delete documents, upload certificates for others) |
 
-A helper function `is_admin()` checks the current user's role from the `employees` table. This is used in almost every RLS policy.
+**Manager rule of thumb:** work-related team oversight only — **never** payroll, **never** POPIA/personal data (tax, banking, medical), **never** the employment contract/NDA. A manager can start an onboarding and track its work tasks, but the HR-admin phase and the contract task are hidden from them. Enforce in RLS, not just the UI.
+
+Helper functions (e.g. `is_admin()` / `is_manager_of()`) check the current user's role and team from the `employees` table. These are used in almost every RLS policy.
 
 **Key restrictions:**
 - Employees cannot see other employees' personal info, tax details, or medical records
-- Only admins can post announcements
-- Only admins can approve/decline leave and expense claims
+- Managers cannot see their team's payroll/POPIA data or the contract/NDA task
+- Only admins can post announcements (Notify All)
+- Managers and admins can approve/decline expense claims; only admins approve leave
 - Only admins can read the audit log
-- Employees can read the people directory (name, role, department, status only)
+- Only admins can upload/delete documents and version policies
+- Employees and managers can read the people directory (name, role, department, status only)
 - Template tables (phases, tasks, SOPs, SOP steps) are readable by everyone
 
 ---
@@ -132,20 +141,24 @@ Last 100 actions from the audit log, joined with employee names and avatars. Sho
 
 ---
 
-## Storage Buckets (create manually in Supabase)
+## File Storage (SharePoint / OneDrive — Microsoft 365)
 
-| Bucket | Purpose | Access |
-|--------|---------|--------|
-| `documents` | Company documents (contracts, SOPs, templates, job descriptions) | Public read for authenticated users |
-| `receipts` | Expense claim receipt uploads | Private — own + admin |
+PULSE does **not** use Supabase Storage buckets. All files are stored in SharePoint / OneDrive via the Microsoft Graph API; the relevant table holds the SharePoint item reference.
+
+| Content | Where the reference lives | Access |
+|---------|---------------------------|--------|
+| Company documents (contracts, SOPs, templates, job descriptions) | `documents` | Read for authenticated users; admin uploads/deletes |
+| Expense receipt slips + timesheet copies | `expense_*` lines / claim | Own + approver (manager/admin) |
+| Certificate PDFs (product + NQF) and AA Rate Certificates | `certifications` / `aa_rate_certificates` | Own upload; admin uploads for others |
+| Policy source files (Word → HTML in-app, PDF download) | `hr_policies` / policy versions | Read for authenticated users; admin versions |
 
 ---
 
 ## Next Steps After Schema Deployment
 
-1. **Create employee accounts** in Supabase Auth for each team member
-2. **Insert employee records** in the `employees` table with their auth UUIDs
+1. **Set up Microsoft 365 SSO** and map M365 identities to the three roles (Employee/Manager/Admin)
+2. **Insert employee records** in the `employees` table linked to their M365 identities
 3. **Create leave balances** for 2026 for each employee
-4. **Upload documents** to the `documents` Storage bucket and create records in the `documents` table
+4. **Upload documents** to SharePoint / OneDrive and create records (with the SharePoint item reference) in the `documents` table
 5. **Wire PULSE frontend** to Supabase JS client (`@supabase/supabase-js`)
-6. **Set up Resend** for transactional emails (password reset, leave approved, etc.)
+6. **Wire Microsoft 365 / Outlook (Graph API)** for transactional and notification email (task-assigned, announcements, certification-expiry reminders, etc.)
