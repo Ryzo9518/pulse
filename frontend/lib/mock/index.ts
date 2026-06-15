@@ -176,11 +176,6 @@ export function getBillableSummary(): BillableSummaryRow[] {
 
 // ── Certifications ────────────────────────────────────────────────────────────
 
-/** Every certificate on file (admin-scope read). */
-export function listAllCertifications(): Certification[] {
-  return certState
-}
-
 /**
  * Certificates visible to the given viewer, by role (HANDOFF §2/§3):
  * - 'employee' → only their own certs.
