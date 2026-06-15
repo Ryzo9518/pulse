@@ -86,16 +86,18 @@ The build only has `employee | admin`. The prototype is a **three-role** system.
 
 ---
 
-## Open product decisions for Ryan (don't block W0/W1; needed by the listed workstream)
+## Product decisions — RESOLVED (Ryan, 2026-06-15)
 
-| # | Decision | Affects | Default if unanswered |
+| # | Decision | Affects | Resolution |
 |---|---|---|---|
-| D1 | Policy version publish resets **only that policy's** ack (prototype) or **all** acks (HANDOFF §4 says all)? | W2 | All (per HANDOFF) |
-| D2 | Non-invoiced travel: **blocked** (banner copy) or **claimable at fixed-cost rate** (prototype logic)? Finance call. | W7 | Fixed-cost (prototype) |
-| D3 | `/chat`: rebuild as **Ask-HR assistant** (prototype), **keep team-chat board**, or **both** (separate nav items)? | W10 | Rebuild as Ask-HR; drop the duplicate announcements board |
-| D4 | Keep build-only extras not in the prototype? — admin **Passwords** screen, **notification-type** picker, workflow **priority/system badges + integration-preview modal**, dashboard **activity feed**. | W6/W8 | Cut what duplicates/contradicts the prototype; keep neutral conveniences |
-| D5 | Documents categories: prototype's **4** (HR & Compliance, Finance, IT & Systems, Templates & Brand) or the build's **7**? | W9 | Prototype's 4 |
-| D6 | Keep the build's **richer Forms** (POPIA consent, SA-ID/account validation, 2nd emergency contact)? They exceed the prototype. | — | Keep (build is ahead) |
+| D1 | Policy version publish — scope of re-acknowledgement. | W2 | **Only the changed policy** must be re-acknowledged (by all staff); the other policies stay signed. |
+| D2 | Non-invoiced travel rule. | W7 | **Claimable at the fixed-cost rate** (~R4.59/km), not the full AA rate. Update the prototype's contradictory "may not be claimed" banner copy to match. |
+| D3 | `/chat` identity. | W10 | **Rebuild as the Ask-HR assistant shell** (suggestion chips, bot bubbles, "Thinking…", HR disclaimer; LLM stubbed/deferred). **Remove the team-chat + announcements board** — Notify All already covers announcements. |
+| D4 | Build-only extras. | W6/W8 | **KEEP:** notification-type picker (Notify All), workflow priority dots + Zoho/M365 system badges. **REMOVE:** admin Passwords screen, dashboard activity feed. (Owner-assignment must still be the primary workflow interaction; badges are secondary.) |
+| D5 | Documents categories. | W9 | **Keep the build's richer 7 categories** (do not downgrade to the prototype's 4). |
+| D6 | Forms richness. | — | **Keep the build's forms** (POPIA consent, SA-ID/account validation, 2nd emergency contact) — they exceed the prototype. No change. |
+
+Knock-on cleanups implied by the above: D3 → remove `/chat` announcements board + reconcile nav ("Ask HR" label/icon); D4 → delete the `/admin/passwords` route + its nav entry and the dashboard activity-feed section.
 
 ## Execution notes
 - **Per repo working agreement:** one feature branch per workstream, draft PR early, the Claude code-review Action + the CLAUDE.md specialist-dimension review must pass before merge. Stay on mock data.
