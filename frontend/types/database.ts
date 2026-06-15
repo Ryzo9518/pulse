@@ -385,6 +385,43 @@ export interface Document {
   updated_at: string
 }
 
+/**
+ * How a new document is being added in the Add-documents flow:
+ * 'upload' = one or more local files (storage stubbed in the mock phase),
+ * 'sharepoint' = a single SharePoint URL captured as a LINK document.
+ */
+export type DocumentSource = 'upload' | 'sharepoint'
+
+/** A captured file in the upload draft (storage is stubbed — we keep names/sizes only). */
+export interface DocumentDraftFile {
+  name: string
+  /** Inferred type label, e.g. 'pdf', 'docx', 'xlsx'. */
+  file_type: string
+  /** Pre-formatted size label for display, e.g. '720 KB'. */
+  size_label: string
+}
+
+/** Input for {@link addDocuments} — one category, either uploaded files or a SharePoint link. */
+export interface AddDocumentsInput {
+  category: DocumentCategory
+  source: DocumentSource
+  /** Files to add when source === 'upload'. */
+  files: DocumentDraftFile[]
+  /** SharePoint URL when source === 'sharepoint'. */
+  sharepoint_url: string
+  /** Optional display name override for the SharePoint link. */
+  link_name?: string
+}
+
+/** Input for {@link updateDocument} — replace a document with a new version (file or link). */
+export interface UpdateDocumentInput {
+  source: DocumentSource
+  /** Replacement file when source === 'upload'. */
+  file?: DocumentDraftFile
+  /** Replacement SharePoint URL when source === 'sharepoint'. */
+  sharepoint_url?: string
+}
+
 export interface DocumentAcknowledgement {
   id: string
   document_id: string
