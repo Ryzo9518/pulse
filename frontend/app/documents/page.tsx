@@ -18,6 +18,7 @@ import type { BadgeColor } from '@/components/ui'
 import {
   LINK_FILE_TYPE,
   addDocuments,
+  deleteDocument,
   listDocuments,
   updateDocument,
 } from '@/lib/mock'
@@ -177,6 +178,22 @@ export default function DocumentsPage() {
     setDraft(emptyDraft())
   }
 
+  function handleDelete(doc: Document) {
+    if (
+      !window.confirm(
+        `Remove "${doc.title}" from the document library? Staff will no longer see it.`,
+      )
+    ) {
+      return
+    }
+    deleteDocument(doc.id)
+    setVersion((v) => v + 1)
+    toast({
+      title: 'Document removed',
+      message: `"${doc.title}" was removed from the library.`,
+    })
+  }
+
   function addSimulatedFile() {
     setDraft((d) => {
       // In replace mode only one (the latest) file matters; cap at one.
@@ -293,13 +310,24 @@ export default function DocumentsPage() {
                             </span>
                           </button>
                           {canManage ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openReplaceModal(doc)}
-                            >
-                              Update
-                            </Button>
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openReplaceModal(doc)}
+                              >
+                                Update
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDelete(doc)}
+                                aria-label={`Remove ${doc.title}`}
+                                className="text-jera-red hover:text-jera-red"
+                              >
+                                Remove
+                              </Button>
+                            </>
                           ) : null}
                           <button
                             type="button"

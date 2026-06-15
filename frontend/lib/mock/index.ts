@@ -943,6 +943,19 @@ export function updateDocument(
   return doc
 }
 
+/**
+ * Remove a document from the library (soft-delete — sets is_active=false so it
+ * drops out of listDocuments but the record is retained for audit). Idempotent;
+ * unknown ids are a no-op. Admin-only at the UI layer (gated by
+ * can(role,'uploadDocuments')); production MUST also enforce this in RLS.
+ */
+export function deleteDocument(documentId: string): void {
+  const doc = documentState.find((d) => d.id === documentId)
+  if (!doc) return
+  doc.is_active = false
+  doc.updated_at = new Date().toISOString()
+}
+
 /** Fields a caller supplies when creating or editing a certificate. */
 export interface CertificationInput {
   employee_id: string
