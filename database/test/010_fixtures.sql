@@ -24,6 +24,12 @@ values ('00000000-0000-0000-0000-0000000c1a17','Acme Ltd',false,'fixed_cost',4.5
 -- Werner's training status + a product cert.
 insert into training_status (employee_id, product, ilt_date, getting_started_done)
 values ('00000000-0000-0000-0000-000000000007','x3','2026-07-15',true);
+-- Melicke (…06) reports to Charl (…04), NOT Kevin (…05). Her training_status row
+-- exists so a cross-team-manager leak is detectable: pre-F2, Kevin's org-wide
+-- pulse_is_staff() read returns BOTH Werner + Melicke (count 2); post-F2 the
+-- team-scoped read returns only Werner (count 1). (GOV F7 pinned negative test.)
+insert into training_status (employee_id, product, getting_started_done)
+values ('00000000-0000-0000-0000-000000000006','payroll',true);
 insert into certifications (employee_id, cclass, vendor, product, name, issued, expiry)
 values ('00000000-0000-0000-0000-000000000007','product','Sage','Sage X3','Sage X3 Certified Consultant','2025-03-01','2027-03-01');
 
@@ -38,3 +44,10 @@ insert into onboarding_task_status (workflow_id, task_id, status) values
 -- An active company document.
 insert into documents (title, category, file_type, is_active)
 values ('Leave Application Form','employee_forms','pdf',true);
+
+-- Acknowledgement fixtures (for ack-reset + policies_completed tests).
+-- Werner has an ACKNOWLEDGED ack of HR001 (so a publish can reset it). The other
+-- 23 active policies are unacknowledged, so Werner's policies_completed is false
+-- until every active policy is acknowledged.
+insert into hr_policy_acknowledgements (employee_id, policy_id, acknowledged, read_started_at, acknowledged_at)
+values ('00000000-0000-0000-0000-000000000007','HR001',true,now(),now());
