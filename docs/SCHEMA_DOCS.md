@@ -1,3 +1,6 @@
+> ⚠️ **SUPERSEDED — DO NOT USE (tombstoned by Fable P0, 2026-06-17).**
+> Describes the obsolete `pulse_v5_schema.sql` (2 roles, 20 policies, 3 SOPs, no certifications/training/aa-rate tables). The **canonical schema is now `database/migrations/001_schema.sql` + `002_rls.sql` + `003_seed.sql`** (33 tables, three roles + owner, 24 policies, RLS-enforced). See `database/README.md`. Kept only for historical reference.
+
 # PULSE Database Schema Documentation
 
 **Platform:** Supabase (PostgreSQL)
