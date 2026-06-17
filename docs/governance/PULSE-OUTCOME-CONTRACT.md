@@ -1,5 +1,7 @@
 # Pulse — DETERMINISTIC OUTCOME CONTRACT (Backend Phase)
 
+> ✅ **RATIFIED — Ryan de Kock (Owner), 2026-06-17.** Board-certified SIGNED-OFF (zero defects: TOTAL, single-implementation, fully traced, zero TARGET-as-LIVE). This is the locked build spec for P4. P4 build additionally requires the live dedicated Postgres on jeraaiboss + the M365 client secret + the on-prem LLM host before it can execute.
+
 **Standard:** Fable zero-drift. This contract sits **above** the certified
 `docs/governance/PULSE-GOVERNANCE-CONTRACT.md` (hereafter **GOV**). GOV owns the
 authority matrix (GOV §1), the statecharts (GOV §3.1–§3.5, §4), the V-id ledger

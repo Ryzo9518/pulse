@@ -1,5 +1,7 @@
 # Pulse — GOVERNANCE CONTRACT (Backend Phase)
 
+> ✅ **RATIFIED — Ryan de Kock (Owner), 2026-06-17.** Board-certified SIGNED-OFF (single-implementation, zero false [LIVE], no deferred fork). Locked build spec for P4, paired with the deterministic outcome contract.
+
 **Standard:** Fable zero-drift governance. Every normative claim below is tagged
 either `[LIVE: file:line]` (verified true against the working tree at HEAD on
 2026-06-17) or `[TARGET — to build]` (not yet in the tree; the build must create
