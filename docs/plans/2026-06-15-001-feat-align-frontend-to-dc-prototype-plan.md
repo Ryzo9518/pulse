@@ -1,7 +1,7 @@
 # Align the Pulse frontend to the new `Pulse.dc.html` prototype
 
 **Date:** 2026-06-15
-**Status:** Proposed — awaiting Ryan's go-ahead on sequencing + the open product decisions below
+**Status:** ✅ COMPLETE — all workstreams W0–W9 shipped/merged to `main` (2026-06-15). Retained as the historical record of the frontend prototype-alignment phase. The backend phase is governed by `2026-06-15-002-feat-pulse-backend-phase-plan.md`.
 **Branch landing this plan + prototype:** `chore/adopt-dc-prototype`
 
 ## Why

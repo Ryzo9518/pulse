@@ -1,3 +1,7 @@
+> ⚠️ **SUPERSEDED — DO NOT USE FOR THE BACKEND BUILD (tombstoned by Fable P0, 2026-06-17).**
+> This guide pre-dates the locked decisions and shipped code. It is **stale and a re-poison risk**: it references Resend (now **Microsoft 365 Graph**), "20 HR policies as uploaded files" (now **24, seeded as metadata** — see `database/migrations/003_seed.sql`), the archived `pulse_v5_schema.sql` (now `database/migrations/001/002/003`), and has no M365 SSO setup.
+> **Authoritative sources:** `docs/plans/2026-06-15-002-feat-pulse-backend-phase-plan.md` (deploy/runbook), `docs/prototype/HANDOFF.md` (stack), `database/README.md` (schema/RLS). Kept only for historical reference.
+
 # PULSE — Launch Guide
 ### From Zero to Live at pulse.jera.co.za
 
