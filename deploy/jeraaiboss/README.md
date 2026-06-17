@@ -6,6 +6,36 @@ Operational scripts/units for the self-hosted Pulse Postgres on `jeraaiboss`
 `--restart=always`, user lingering enabled). See `database/README.md` for the
 migration apply order.
 
+## API/auth layer (B1) — data API LIVE; sign-in pending the M365 secret
+
+Containers (rootless podman, on bridge network `pulse-net`, boot-persisted via
+systemd **user** units `pulse-postgres.service` + `pulse-postgrest.service`):
+
+| Container | Image | Bind | Role |
+|---|---|---|---|
+| `pulse-postgres` | `postgres:16-alpine` | `127.0.0.1:5432` | the database |
+| `pulse-postgrest` | `postgrest:v12.2.3` | `127.0.0.1:3001` | REST API over the DB, RLS-enforced |
+
+- **Roles** (`postgrest-roles.sql`): `anon` (no grants → unauth = nothing),
+  `authenticated` (granted in `002_rls.sql`), `authenticator` (PostgREST login).
+- **Secrets on the box** (0600): `~/pulse-db/.jwt_secret` (HS256, shared by
+  PostgREST and — later — GoTrue), `~/pulse-db/.authenticator_pw`,
+  `~/pulse-db/.pg_superpass`.
+- **Verified**: anon → `permission denied`; a valid `authenticated` JWT →
+  RLS-correct results through the API (admin sees payroll; **manager gets `[]`**
+  for `employee_tax_banking` — the POPIA boundary holds at the API).
+
+### Remaining for full B1 (Microsoft sign-in)
+1. **GoTrue** (auth) container, same `JWT_SECRET`, with the **Azure/Entra
+   provider** → needs the **M365 client secret** on the box. Until then users
+   can't get a JWT via Microsoft (tokens were minted manually only to verify RLS).
+2. Generate the `anon` + `service_role` API keys (JWTs signed with `JWT_SECRET`)
+   for the `@supabase/supabase-js` client config.
+3. A gateway (Caddy/nginx) routing `/auth` → GoTrue, `/rest` → PostgREST, + TLS
+   for `pulse.jera.co.za` (B8). PostgREST is `127.0.0.1`-only until then.
+4. Frontend wiring + the mock→real seam swap (B2); null/relink the seeded
+   placeholder `auth_user_id`s at first real login.
+
 ## Backups (B0.5)
 
 | File | Purpose |
