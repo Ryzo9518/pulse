@@ -261,25 +261,40 @@ entry(any change): write audit_log row in same txn  [TARGET]
 guard(all): pulse_is_admin()  [LIVE: 002_rls.sql:96-104]
 ```
 
-State×event table (the deterministic target the build must enforce; a blank cell
-= illegal) **[TARGET — to build]**. **Enforcement vehicle (identical pattern;
-§3.2 compares a derived state):** transition ordering is enforced by a
-`BEFORE UPDATE` trigger that rejects any `(old.status, new.status)` pair absent
-from the transition table above; that table is the single source — no second
-copy in app code.
+Pair table (the deterministic target the build must enforce; a blank cell =
+illegal) **[TARGET — to build]**. **The runtime carries no event token** — the
+status write path passes only the new status, so this machine keys on the
+`(old.status, new.status)` **pair**, not on `(old, event, new)` triples. The
+columns below are the *destination* status, and each non-blank cell names the
+event whose edge that legal pair realizes. **Enforcement vehicle (identical
+pattern; §3.2 compares a derived state):** transition ordering is enforced by a
+`BEFORE UPDATE` trigger — **GATE-EMP-ORDER** — that rejects any
+`(old.status, new.status)` pair absent from this table; the table is the single
+source — no second copy in app code.
 
-| from \ event | complete_onboarding | confirm | suspend | reinstate | terminate |
+| from \ to | onboarding | probation | active | suspended | terminated |
 |---|---|---|---|---|---|
-| onboarding | probation | — | — | — | terminated |
-| probation | — | active | — | — | terminated |
-| active | — | — | suspended | — | terminated |
-| suspended | — | — | — | active | terminated |
+| onboarding | — | probation (complete_onboarding) | — | — | terminated (terminate) |
+| probation | — | — | active (confirm) | — | terminated (terminate) |
+| active | — | — | — | suspended (suspend) | terminated (terminate) |
+| suspended | — | — | active (reinstate) | — | terminated (terminate) |
 | terminated | — | — | — | — | — |
 
-Rationale — the blank `suspend` cells (`onboarding`/`probation`/`suspended` ×
-`suspend`): **suspend is legal only from `active`**. An employee not yet
+There are **8 legal pairs** (the non-blank cells) and therefore **17 illegal
+pairs** in the full 5×5 pair space. The outcome contract's enumerated rejection
+set (B-EMP-X01…X13) covers the **13 distinct illegal pairs** reachable from the
+prior event-keyed enumeration; the remaining 4 illegal pairs
+(`probation→onboarding`, `active→onboarding`, `suspended→onboarding`,
+`terminated→onboarding`) are equally rejected by GATE-EMP-ORDER as pairs absent
+from this table.
+
+Rationale — the blank `→suspended` cells (`onboarding`/`probation`/`suspended`
+→ `suspended`): **suspend is legal only from `active`**. An employee not yet
 confirmed (onboarding/probation) or already suspended has no active engagement
-to suspend, so those transitions are illegal by design, not omission.
+to suspend, so those pairs are illegal by design, not omission. The
+`→active` cells are legal only from `probation` (confirm) and `suspended`
+(reinstate); a `→active` write from any other state (including `active→active`
+and `terminated→active`) is an illegal pair.
 
 Caption: this table assumes a **created row**. The
 creation -> initial-state step (a new hire entering `onboarding`) is a separate
@@ -290,8 +305,12 @@ routing new hires to `onboarding` on creation is not yet built (see the
 Illegal states (must be unrepresentable) **[TARGET — to build]**:
 - `terminated → active` (resurrection of a terminated employee).
 - Skip-ahead `onboarding → active` bypassing probation.
+- Any same-status self-loop pair (`onboarding→onboarding`, `probation→probation`,
+  `active→active`, `suspended→suspended`, `terminated→terminated`): a status write
+  whose new value equals the old is not a transition.
 - Any `status` write by a non-admin [LIVE-blocked: 002_rls.sql:96-104].
-- Out-of-sequence transition (any blank cell above).
+- Out-of-sequence pair (any blank cell above), rejected by GATE-EMP-ORDER on the
+  `(old.status, new.status)` pair.
 
 > Resolution note (BLOCKER 5c): the earlier `reinstate → (back to prior)`
 > notation was non-deterministic; it is replaced by the deterministic
@@ -511,6 +530,106 @@ Illegal states are unrepresentable: the classifier is a pure total function of
 three booleans, so every input maps to exactly one stage
 [LIVE: training.ts:748-757].
 
+### 3.6 Onboarding task status
+
+`onboarding_task_status.status` is the `task_status` enum
+`pending, inprogress, done` [LIVE: 001_schema.sql:26,200]. The table carries the
+work-tracking columns `status, started_at, completed_at, completed_by` plus the
+admin-only `assigned_to` and the structural keys `workflow_id, task_id`
+[LIVE: 001_schema.sql:196-205]. Like §3.1/§3.3 the enum is **bare** — no SQL
+transition table exists, so the ordering machine below is
+**[TARGET — to build]** as a SQL transition guard, paired with the manager
+column-freeze trigger of AUTHORITY CONFLICT #1 / BLOCKER 2.
+
+```
+states: pending, inprogress, done
+        (task_status enum members [LIVE: 001_schema.sql:26])
+initial: the column default is 'pending' [LIVE: 001_schema.sql:200]
+
+pending     --start[admin|manager-team-workphase]----> inprogress
+              entry: set started_at := now()
+inprogress  --complete[admin|manager-team-workphase]-> done
+              entry: set completed_at := now(); set completed_by := actor
+done        --reopen[admin|manager-team-workphase]---> inprogress
+              exit: clear completed_at := NULL; clear completed_by := NULL
+pending     --complete[admin|manager-team-workphase]-> done   # direct-tick fast path
+              entry: set completed_at := now(); set completed_by := actor
+inprogress  --reset[admin|manager-team-workphase]----> pending
+              exit: clear started_at/completed_at/completed_by := NULL
+done        --reset[admin|manager-team-workphase]----> pending
+              exit: clear started_at/completed_at/completed_by := NULL
+
+guard(all transitions): pulse_is_admin()
+  OR (pulse_role()='manager' AND the EXISTS team+work-phase join through
+      onboarding_workflows + onboarding_tasks: pulse_is_team_member(w.employee_id)
+      AND tk.manager_hidden = false AND tk.phase_id <> 'hr')
+  [LIVE-read: 002_rls.sql:181-185; manager write TARGET via ots_manager_ins /
+   ots_manager_upd, BLOCKER 2]
+```
+
+**Manager-writable allowlist (column-level, enforced by the BLOCKER 2 trigger,
+not by RLS):** a manager may write **only** `status, started_at, completed_at,
+completed_by` on a qualifying row. `assigned_to, workflow_id, task_id` are
+**frozen** to managers; `assigned_to` is admin-only ("assign task owners"
+[LIVE: HANDOFF.md:42]).
+
+**BEFORE-trigger freeze (the security-definer trigger of AUTHORITY CONFLICT #1 /
+BLOCKER 2, separate INSERT and UPDATE arms; the INSERT arm never references
+`OLD`):**
+- **`BEFORE INSERT` arm:** raise if `pulse_role()` is manager AND
+  `new.assigned_to IS NOT NULL` — a manager INSERT forces `assigned_to` to NULL.
+- **`BEFORE UPDATE` arm:** raise if `pulse_role()` is manager AND
+  (`new.assigned_to IS DISTINCT FROM old.assigned_to` OR
+  `new.workflow_id IS DISTINCT FROM old.workflow_id` OR
+  `new.task_id IS DISTINCT FROM old.task_id`).
+
+Pair table (the deterministic target the build must enforce; a blank cell =
+illegal) **[TARGET — to build]**. **The LIVE write path is event-less** —
+`frontend/app/workflow/WorkflowBoard.tsx:126-147` calls
+`setTaskStatus(task.id, status)` with no event token, so this machine keys on the
+`(old.status, new.status)` **pair**, not on `(old, event, new)` triples. The
+columns below are the *destination* status and each non-blank cell names the event
+whose edge that legal pair realizes. **Enforcement vehicle (identical pattern to
+§3.1/§3.3):** a `BEFORE UPDATE` trigger — the **GATE-OTS-ORDER** ordering gate —
+rejects any `(old.status, new.status)` pair absent from the table below; that
+table is the single source — no second copy in app code. On INSERT the seed state
+is `pending` (the column default), so an INSERT may only land on `pending` or, on
+the direct-tick fast path, `done`.
+
+| from \ to | pending | inprogress | done |
+|---|---|---|---|
+| pending | — | inprogress (start) | done (complete) |
+| inprogress | pending (reset) | — | done (complete) |
+| done | pending (reset) | inprogress (reopen) | — |
+
+There are **6 legal pairs** (the non-blank cells) and therefore **3 distinct
+illegal pairs** in the full 3×3 pair space: the 3 self-loops `pending→pending`,
+`inprogress→inprogress`, `done→done` (a write whose new status equals the old is
+not a transition). Every other pair is legal: in particular `done→inprogress` is
+the legal `reopen` pair (T-OTS-4) — exactly what live advance emits when a `done`
+task is re-activated — and `pending→inprogress` is the legal `start` pair
+(T-OTS-1).
+
+Rationale — the only illegal pairs are the self-loops. `start`
+(`pending→inprogress`), `complete` (`pending→done`, `inprogress→done`), `reopen`
+(`done→inprogress`), and `reset` (`inprogress→pending`, `done→pending`) cover
+every off-diagonal pair, so the off-diagonal is fully legal and only the three
+identity self-loops remain illegal.
+
+Illegal states (must be unrepresentable) **[TARGET — to build]**:
+- A manager write of `assigned_to`/`workflow_id`/`task_id` on any row → forbidden
+  by the BEFORE-trigger freeze above (BLOCKER 2).
+- A manager write on an `hr`-phase or `manager_hidden` task, or a non-team
+  employee's task → forbidden by the EXISTS guard (`ots_manager_ins` /
+  `ots_manager_upd`, [LIVE-read: 002_rls.sql:181-185]).
+- A same-status self-loop pair (`pending→pending`, `inprogress→inprogress`,
+  `done→done`) → forbidden by GATE-OTS-ORDER as a pair absent from the table.
+
+GATE-OTS-ORDER is the named ordering gate this section introduces; the outcome
+contract references the single resolved 3.6 edge for each task-status action and
+`assigned_to` is routed to its own admin-only write, never folded into the status
+edge.
+
 ---
 
 ## §4 Derived stage machine (one classifier rule)
@@ -629,7 +748,7 @@ FALSE).** Kevin (emp `…05`) manages **7 reports** — Werner, Liberty, Riette,
 Ruth, Leon, Michael, Sikolwethu (emp `…07`–`…0d`)
 [LIVE: 003_seed.sql:18-24] — not just Werner. The true reason the org-wide leak
 goes undetected is **data, not topology**: only Werner has a `training_status`
-row [LIVE: 010_fixtures.sql:25], and **no assertion queries `training_status` as
+row [LIVE: database/test/010_fixtures.sql:25], and **no assertion queries `training_status` as
 a different team's manager**, so a manager who reads every row in the table looks
 identical to one correctly scoped to his own team. **Pinned negative test:** seed
 a `training_status` row for **Melicke** (emp `…06`, who reports to **Charl** emp
