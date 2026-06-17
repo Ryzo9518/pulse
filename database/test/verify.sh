@@ -22,6 +22,8 @@ echo "▸ 001_schema.sql";                psql -f "$ROOT/database/migrations/001
 echo "▸ 002_rls.sql";                   psql -f "$ROOT/database/migrations/002_rls.sql"
 echo "▸ 003_seed.sql";                  psql -f "$ROOT/database/migrations/003_seed.sql"
 echo "▸ 003_seed.sql (re-run = idempotent)"; psql -f "$ROOT/database/migrations/003_seed.sql"
+echo "▸ 004_conformance.sql";           psql -f "$ROOT/database/migrations/004_conformance.sql"
+echo "▸ 004_conformance.sql (re-run = idempotent)"; psql -f "$ROOT/database/migrations/004_conformance.sql"
 echo "▸ test fixtures";                 psql -f "$ROOT/database/test/010_fixtures.sql"
 echo "▸ RLS assertions";                psql -f "$ROOT/database/test/rls_tests.sql"
 echo "✓ schema applied, seed idempotent, RLS verified"
