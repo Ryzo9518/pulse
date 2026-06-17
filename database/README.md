@@ -33,9 +33,25 @@ expectation aborts with a `RLS FAIL [...]` message. Verified passing 2026-06-15.
 
 ## Apply order in production (B0)
 
-1. `001_schema.sql` → `002_rls.sql` → `003_seed.sql` (do **not** apply the
-   `test/` shim — Supabase provides `auth.uid()`).
+1. `000_prod_auth.sql` (the real Supabase `auth.uid()` reading the JWT claim —
+   NOT the `test/` shim) → `001_schema.sql` → `002_rls.sql` → `003_seed.sql` →
+   `004_conformance.sql`.
 2. Regenerate `frontend/types/database.ts` from the live DB and confirm parity.
+
+### Deployed (B0) — jeraaiboss, 2026-06-17 ✅
+Live on `jeraaiboss` (154.70.249.26) as a **rootless podman** container
+`pulse-postgres` (PostgreSQL 16.14), bound to **127.0.0.1:5432 only** (not
+internet-exposed), persistent volume `pulse_pgdata`, `--restart=always`, user
+lingering enabled (survives logout/reboot). Superuser password at
+`~/pulse-db/.pg_superpass` (0600). Applied `000_prod_auth → 001 → 002 → 003 → 004`
+and verified: 33 tables, 73 RLS policies, 24 policies, 14 employees, owner =
+ryan@jera.co.za, 0 tables without RLS; `auth.uid()` resolves a real signed-in
+user via the JWT claim.
+
+**Not yet (next, B0.5/B1/B2):** encrypted off-box backups + tested restore
+BEFORE any real personal data; the Supabase API/auth layer (PostgREST + GoTrue +
+M365 Entra — needs the M365 client secret) so the app can connect; null/relink
+the seeded placeholder `auth_user_id` values at first real M365 login.
 
 ## Security model (see 002_rls.sql)
 
