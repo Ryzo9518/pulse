@@ -1,0 +1,7 @@
+[Unit]
+Description=Pulse Postgres encrypted backup
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/pulse-db/pulse-backup.sh

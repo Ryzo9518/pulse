@@ -1,0 +1,6 @@
+[Unit]
+Description=Pulse Postgres backup restore verification
+
+[Service]
+Type=oneshot
+ExecStart=%h/pulse-db/pulse-restore-test.sh
