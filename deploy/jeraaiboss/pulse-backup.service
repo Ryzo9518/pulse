@@ -4,4 +4,6 @@ After=network-online.target
 
 [Service]
 Type=oneshot
+# host-specific config (e.g. PULSE_OFFBOX_DEST) — optional, lives off-repo on the box
+EnvironmentFile=-%h/pulse-db/backup.env
 ExecStart=%h/pulse-db/pulse-backup.sh

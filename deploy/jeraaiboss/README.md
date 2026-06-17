@@ -45,9 +45,19 @@ podman exec -i pulse-postgres pg_restore -U postgres -d pulse --clean --if-exist
 rm -f /tmp/pulse.dump
 ```
 
-## ⚠️ Two things to action before real personal data (POPIA)
-1. **Off-box copies** — set `PULSE_OFFBOX_DEST` (a second machine / NAS / object
-   store). Confirm the destination with Ryan.
-2. **The backup key** (`~/pulse-db/.backup_key`) must be stored **off the box**
-   too — a backup encrypted with a key that only lives next to it is not
-   recoverable if the box is lost. Keep a copy in a password manager / secret store.
+## Off-box copies — DONE (Hetzner, 2026-06-17) ✅
+Encrypted backups rsync to the Hetzner box `jera-toolkit` (159.69.216.113) at
+`/var/backups/pulse`, via the `hetzner-backup` ssh alias in `~/.ssh/config` (uses
+the existing `~/.ssh/hetzner_migrate` key, root). Wired through
+`~/pulse-db/backup.env` (`PULSE_OFFBOX_DEST=hetzner-backup:/var/backups/pulse`),
+which the systemd service loads. Verified: manual + scheduled runs both land on
+Hetzner. (Off-box retention on Hetzner is not yet rotated — add a prune cron there
+if needed.)
+
+## ⚠️ Still to action before real personal data (POPIA)
+- **The backup key** (`~/pulse-db/.backup_key`) must be stored **off both boxes**
+  (password manager / secret store). The encrypted backups now live on Hetzner,
+  but if jeraaiboss is lost the key goes with it and the Hetzner copies become
+  unrecoverable. Ryan: grab `~/pulse-db/.backup_key` from jeraaiboss and stash it
+  in a password manager. Do NOT also copy it to Hetzner (that would defeat the
+  encryption).
