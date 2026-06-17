@@ -89,11 +89,22 @@ Database separation is perimeter, not data protection. Add: a **data-classificat
 In **Azure Portal → Microsoft Entra ID → App registrations → New registration**:
 1. **Name:** `Pulse HR Portal`  2. **Account types:** *Single tenant* (Jera only).
 3. **Redirect URIs (Web):** `https://pulse.jera.co.za/api/auth/callback/azure-ad` and `http://localhost:3000/api/auth/callback/azure-ad` (dev). *(Exact path confirmed once §Identity option is chosen — confirm before you register it.)*
-4. Copy & send as secrets (never into git): **Directory (tenant) ID**, **Application (client) ID**.
-5. **Certificates & secrets → New client secret** → copy the **value** + record expiry (calendar it).
-6. **API permissions → Microsoft Graph:**
+4. **Directory (tenant) ID** + **Application (client) ID** — ✅ provided by Ryan 2026-06-17 (Tenant `4f124a4c-…`, Client `46282e6c-…`; these are config, not secrets, fine to store in the plan/server config).
+5. **Client secret** — see **Client secret — create + secure handoff** below (timing matters: create it at **B0**, not now).
+6. **API permissions → Microsoft Graph** — ✅ added in Entra 2026-06-17:
    - *Delegated* (sign-in): `openid`, `profile`, `email`, `User.Read`.
    - *Application* (server-side): `Mail.Send` (then constrain via Exchange Application Access Policy to one mailbox), `Sites.Selected` (then grant the app write to just the `jera.co.za` site). **Grant admin consent.**
+
+### Client secret — create + secure handoff (B0/B1)
+The client secret is the credential the Pulse server uses to act *as the app* against M365 (the SSO token exchange + app-only Graph for `Mail.Send` and `Sites.Selected`). Whoever holds it can act as Pulse against the tenant — treat it as a master key.
+
+**Create (Azure portal — Ryan):** App registration **Pulse HR Portal** → **Certificates & secrets** → **Client secrets** → **+ New client secret** → Description `Pulse server (jeraaiboss)`, **Expires: 24 months** → **Add** → **copy the *Value* immediately** (shown once; copy the *Value*, not the *Secret ID*) → record the expiry date.
+
+**Timing — create it AT B0, not before.** The 24-month clock starts at creation; making it before the server exists just burns expiry on an unused key. Create it during server stand-up (B0). If it must exist earlier, paste the Value into a password manager (1Password / Bitwarden / the M365 admin vault) — **never** chat, email, Teams, or git.
+
+**Handoff destination (B0/B1):** the Value goes ONLY into the server's secret store on `jeraaiboss` as an env var (e.g. `AZURE_AD_CLIENT_SECRET`) in a root-owned `600` file via systemd `EnvironmentFile` / `LoadCredential` — never committed to git, never echoed to logs (see §Security → Secret management). Prefer a **certificate credential** over a secret if the team is comfortable (more secure, more setup); a secret is acceptable to start.
+
+**Rotation:** set a calendar reminder ~1 month before the expiry date. An expired secret silently breaks **all** SSO + email + SharePoint at once — §Security flags this as the top outage risk, and the B8 monitor set watches secret-expiry.
 
 ## Workstreams (sequenced)
 
