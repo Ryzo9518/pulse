@@ -1,11 +1,14 @@
 ---
 title: "feat: PULSE frontend build (mock-data, all screens)"
 type: feat
-status: active
+status: complete
 date: 2026-06-13
+completed: 2026-06-14
 ---
 
 # feat: PULSE frontend build (mock-data, all screens)
+
+> **Status: complete.** All 15 units shipped to `main` (foundation PR #1 + screen PRs #4–#16); the policy gate is enforced and the full mock-data app is reachable. Prototype-alignment work continued in `2026-06-15-001-feat-align-frontend-to-dc-prototype-plan.md`.
 
 ## Overview
 
@@ -170,7 +173,7 @@ admin role: no gate (sees everything)
 
 ### Phase 1 — Foundation
 
-- [ ] **Unit 1: Mock data layer + test runner**
+- [x] **Unit 1: Mock data layer + test runner**
 
 **Goal:** Realistic in-memory data for every entity, behind an accessor layer; add Vitest + RTL.
 
@@ -197,7 +200,7 @@ admin role: no gate (sees everything)
 
 **Verification:** `npm run test` passes; accessors return correctly-typed data.
 
-- [ ] **Unit 2: App shell, sidebar, mock session + role switch**
+- [x] **Unit 2: App shell, sidebar, mock session + role switch**
 
 **Goal:** The persistent frame (dark sidebar + content), role-based nav, and the mock session that powers "who am I / which view."
 
@@ -224,7 +227,7 @@ admin role: no gate (sees everything)
 
 **Verification:** Shell renders, nav switches by role, active route highlights.
 
-- [ ] **Unit 3: Shared UI component library**
+- [x] **Unit 3: Shared UI component library**
 
 **Goal:** The reusable primitives every screen needs, matching the design system.
 
@@ -246,7 +249,7 @@ admin role: no gate (sees everything)
 
 ### Phase 2 — Onboarding core
 
-- [ ] **Unit 4: Auth screens (login, 2FA, forgot)**
+- [x] **Unit 4: Auth screens (login, 2FA, forgot)**
 
 **Goal:** Visual login / 2FA / forgot-password screens. No real auth — "Sign in" sets the mock session and routes to `/dashboard`.
 
@@ -266,7 +269,7 @@ admin role: no gate (sees everything)
 
 **Verification:** Click-through login → 2FA → dashboard works; visuals match prototype.
 
-- [ ] **Unit 5: Dashboard (employee + admin)**
+- [x] **Unit 5: Dashboard (employee + admin)**
 
 **Goal:** The home screen for both roles.
 
@@ -286,7 +289,7 @@ admin role: no gate (sees everything)
 
 **Verification:** Both role variants render correctly; Ping shows a toast.
 
-- [ ] **Unit 6: Workflow**
+- [x] **Unit 6: Workflow**
 
 **Goal:** Onboarding task board, role-filtered, with status interactions.
 
@@ -308,7 +311,7 @@ admin role: no gate (sees everything)
 
 **Verification:** Status changes persist within the session; role filtering correct.
 
-- [ ] **Unit 7: SOPs**
+- [x] **Unit 7: SOPs**
 
 **Goal:** Four SOP walkthroughs with step navigation.
 
@@ -328,7 +331,7 @@ admin role: no gate (sees everything)
 
 **Verification:** All 4 SOPs navigate step-by-step; completion updates progress.
 
-- [ ] **Unit 8: My Forms (5 onboarding forms)**
+- [x] **Unit 8: My Forms (5 onboarding forms)**
 
 **Goal:** The five onboarding forms with progress tracking.
 
@@ -351,7 +354,7 @@ admin role: no gate (sees everything)
 
 **Verification:** Each form validates and updates progress; dropdowns populated from constants.
 
-- [ ] **Unit 9: Policies gate (critical)**
+- [x] **Unit 9: Policies gate (critical)**
 
 **Goal:** The 20-policy list with mandatory acknowledgement and the navigation gate.
 
@@ -380,7 +383,7 @@ admin role: no gate (sees everything)
 
 ### Phase 3 — Operations
 
-- [ ] **Unit 10: Expenses (claim form + approver view)**
+- [x] **Unit 10: Expenses (claim form + approver view)**
 
 **Goal:** Expense claim entry with live math, plus the approver review flow.
 
@@ -405,7 +408,7 @@ admin role: no gate (sees everything)
 
 **Verification:** Live totals correct to 2 decimals; approver flow toggles status.
 
-- [ ] **Unit 11: People directory**
+- [x] **Unit 11: People directory**
 
 **Goal:** Grid of employee cards.
 
@@ -423,7 +426,7 @@ admin role: no gate (sees everything)
 
 **Verification:** All seeded employees render with correct status dots.
 
-- [ ] **Unit 12: Documents library**
+- [x] **Unit 12: Documents library**
 
 **Goal:** Categorised document browser.
 
@@ -441,7 +444,7 @@ admin role: no gate (sees everything)
 
 **Verification:** Categories and badges render per prototype.
 
-- [ ] **Unit 13: Chat & Announcements**
+- [x] **Unit 13: Chat & Announcements**
 
 **Goal:** Two-tab comms screen.
 
@@ -461,7 +464,7 @@ admin role: no gate (sees everything)
 
 ### Phase 4 — Admin portal
 
-- [ ] **Unit 14: Admin — All Employees + New Employee**
+- [x] **Unit 14: Admin — All Employees + New Employee**
 
 **Goal:** Admin employee table and the onboarding-creation form.
 
@@ -479,7 +482,7 @@ admin role: no gate (sees everything)
 
 **Verification:** Table lists mock employees; New Employee adds one; employees can't reach admin routes.
 
-- [ ] **Unit 15: Admin — Passwords + Notify All**
+- [x] **Unit 15: Admin — Passwords + Notify All**
 
 **Goal:** Password management table and broadcast notification composer.
 
