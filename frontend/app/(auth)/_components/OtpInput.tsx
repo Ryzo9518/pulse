@@ -70,7 +70,7 @@ export function OtpInput({ value, onChange }: OtpInputProps) {
             onKeyDown={(e) => handleKeyDown(idx, e)}
             onPaste={handlePaste}
             className={`h-14 w-12 rounded-btn border-2 bg-surface text-center font-mono text-2xl font-extrabold text-text outline-none transition-all duration-200 focus:border-jera-red focus:ring-[3px] focus:ring-jera-red/20 ${
-              filled ? 'border-jera-green bg-[#2D8A5608]' : 'border-surface-border'
+              filled ? 'border-jera-green bg-jera-green/5' : 'border-surface-border'
             }`}
           />
         )
