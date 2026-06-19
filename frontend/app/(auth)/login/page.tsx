@@ -39,7 +39,7 @@ export default function LoginPage() {
         {error ? (
           <div
             role="alert"
-            className="animate-shake rounded-btn border border-[#DB443730] bg-[#DB443710] px-[14px] py-[10px] text-[13px] text-[#DB4437]"
+            className="animate-shake rounded-btn border border-jera-red/30 bg-jera-red/10 px-[14px] py-[10px] text-[13px] text-jera-red"
           >
             {error}
           </div>

@@ -41,7 +41,7 @@ export default function ForgotPasswordPage() {
         <div className="flex flex-col gap-4">
           <div
             role="status"
-            className="rounded-btn border border-[#2D8A5630] bg-[#2D8A5610] px-[14px] py-[10px] text-[13px] text-jera-green"
+            className="rounded-btn border border-jera-green/30 bg-jera-green/10 px-[14px] py-[10px] text-[13px] text-jera-green"
           >
             Reset link sent. Check your inbox at <strong>{email.trim()}</strong> for instructions.
           </div>
@@ -60,7 +60,7 @@ export default function ForgotPasswordPage() {
           {error ? (
             <div
               role="alert"
-              className="animate-shake rounded-btn border border-[#DB443730] bg-[#DB443710] px-[14px] py-[10px] text-[13px] text-[#DB4437]"
+              className="animate-shake rounded-btn border border-jera-red/30 bg-jera-red/10 px-[14px] py-[10px] text-[13px] text-jera-red"
             >
               {error}
             </div>
