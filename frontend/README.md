@@ -31,8 +31,6 @@ OneDrive file storage — gets wired in during a later phase.
 
 ## Trying things out
 
-- **`/showcase`** — a component gallery showing the building blocks (buttons,
-  cards, badges, etc.) in one place.
 - **The 🔧 dev role-switch** — a small developer control that lets you flip
   between the **employee** view and the **admin** view, so you can see both
   sides of the portal without separate logins.
