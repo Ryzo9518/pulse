@@ -1,0 +1,12 @@
+{
+    email ryan@jera.co.za
+}
+# JeraAIBoss shared reverse proxy — one block per app, routed by hostname.
+# Each app stays on its private localhost port (see port registry).
+pulse.jera.co.za {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:3000
+}
+# --- future apps: add a block when deployed ---
+# intacct.jera.co.za { reverse_proxy 127.0.0.1:8002 }
+# anomaly.jera.co.za { reverse_proxy 127.0.0.1:8001 }
