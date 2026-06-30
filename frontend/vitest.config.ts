@@ -9,6 +9,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, '.'),
+      // `server-only` is a Next.js virtual that vite can't resolve; stub it.
+      'server-only': path.resolve(__dirname, 'test-stubs-server-only.ts'),
     },
   },
   test: {
