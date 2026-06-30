@@ -1,8 +1,8 @@
 'use client'
 
 // ── Dashboard (Unit 5) ───────────────────────────────────────────────────────
-// The landing screen. Renders two distinct experiences off the same page,
-// branched on the dev session role (flip via the RoleSwitch in AppShell):
+// The landing screen. Renders two experiences off the same page, branched on the
+// session role:
 //
 //   • employee → a "Focus | Journey" toggle (progress ring + next-step CTA, or a
 //     6-step path-to-billable timeline), a time-aware "This week" action list, a
@@ -12,11 +12,9 @@
 //     and an approvals queue (submitted expense claims + outstanding policy
 //     sign-offs) with an empty state.
 //
-// Mirrors docs/prototype/Pulse.dc.html `dashboardData` / `renderVals` (route key
-// "dashboard") and HANDOFF.md. Mock-data phase: all reads go through @/lib/mock;
-// role gating via @/lib/capabilities. Manager-scoped task counts use
-// listTasks(role) — never listTasks('admin') — so a manager never sees HR-owned
-// counts (HANDOFF §2).
+// Data comes through useDashboardData(): live (PostgREST proxy, RLS-scoped) when
+// NEXT_PUBLIC_PULSE_DATA=live, else the mock seam. Empty tables (certs, billable,
+// expenses) render the existing empty states.
 
 import { useState } from 'react'
 import Link from 'next/link'
@@ -37,36 +35,32 @@ import {
   certExpiryInfo,
   countSummaryStages,
   formatDate,
-  getBillableSummary,
-  getEmployee,
-  getOnboardingSummary,
-  getPolicyAckState,
-  getTaskStatus,
-  listCertifications,
-  listEmployees,
-  listExpenseClaims,
-  listTasks,
 } from '@/lib/mock'
+import { useDashboardData, type DashboardData } from '@/lib/data/useDashboardData'
 import { isStaffRole } from '@/lib/capabilities'
 import { useSession } from '@/lib/mock/session'
-import type { Certification, Employee, UserRole } from '@/types/database'
+import type {
+  Certification,
+  Employee,
+  OnboardingTaskStatus,
+  UserRole,
+} from '@/types/database'
 
-function statusDone(taskId: string): boolean {
-  return getTaskStatus(taskId)?.status === 'done'
+function statusMapOf(
+  statuses: OnboardingTaskStatus[],
+): Map<string, OnboardingTaskStatus['status']> {
+  return new Map(statuses.map((s) => [s.task_id, s.status]))
 }
 
-function fmtMoney(value: number): string {
-  return `R${value.toLocaleString('en-ZA', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
+function employeeMapOf(roster: Employee[]): Map<string, Employee> {
+  return new Map(roster.map((e) => [e.id, e]))
 }
 
 // ── The six fixed onboarding-journey steps (prototype renderVals.jdef) ─────────
 const JOURNEY_DEFS: ReadonlyArray<{ icon: string; label: string; sub: string }> = [
   { icon: '📝', label: 'Paperwork & Day 1', sub: 'Forms, contract, welcome tour' },
   { icon: '💻', label: 'IT verified', sub: 'Microsoft 365 · Zoho · VPN · Memtime' },
-  { icon: '📖', label: 'SOPs & Policies', sub: '4 SOP walkthroughs · 20 HR policies' },
+  { icon: '📖', label: 'SOPs & Policies', sub: '4 SOP walkthroughs · 24 HR policies' },
   { icon: '🎓', label: 'ILT booked', sub: 'Sage University instructor-led course' },
   { icon: '💼', label: 'Supervised-billable', sub: 'After foundations + shadowing' },
   { icon: '🏅', label: 'Certified', sub: 'After ILT + certification exam' },
@@ -75,6 +69,7 @@ const JOURNEY_DEFS: ReadonlyArray<{ icon: string; label: string; sub: string }> 
 export default function DashboardPage() {
   const { currentEmployee, role } = useSession()
   const staff = isStaffRole(role)
+  const data = useDashboardData(role, currentEmployee?.id)
 
   return (
     <AppShell>
@@ -84,13 +79,34 @@ export default function DashboardPage() {
         subtitle={subtitleFor(currentEmployee, staff)}
       />
       <div className="space-y-7 px-10 py-8">
-        {staff ? (
-          <StaffDashboard role={role} currentEmployee={currentEmployee} />
+        {data.loading ? (
+          <DashboardSkeleton />
+        ) : data.error ? (
+          <Card>
+            <p className="text-sm text-jera-red" role="alert">
+              Couldn’t load your dashboard ({data.error}). Please refresh.
+            </p>
+          </Card>
+        ) : staff ? (
+          <StaffDashboard role={role} data={data} />
         ) : (
-          <EmployeeDashboard currentEmployee={currentEmployee} />
+          <EmployeeDashboard currentEmployee={currentEmployee} data={data} />
         )}
       </div>
     </AppShell>
+  )
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label="Loading dashboard">
+      <div className="h-44 animate-pulse rounded-card bg-surface-card" />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-24 animate-pulse rounded-card bg-surface-card" />
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -108,23 +124,26 @@ function subtitleFor(employee: Employee | null, staff: boolean): string | undefi
 
 // ── Employee view ─────────────────────────────────────────────────────────────
 
-function EmployeeDashboard({ currentEmployee }: { currentEmployee: Employee | null }) {
-  // Progress across the employee-visible onboarding tasks.
-  const tasks = listTasks('employee')
+function EmployeeDashboard({
+  currentEmployee,
+  data,
+}: {
+  currentEmployee: Employee | null
+  data: DashboardData
+}) {
+  const statusMap = statusMapOf(data.taskStatuses)
+  const tasks = data.tasks
   const total = tasks.length
-  const done = tasks.filter((t) => statusDone(t.id)).length
+  const done = tasks.filter((t) => statusMap.get(t.id) === 'done').length
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
 
   // ── This week: outstanding actions, due-date computed from start + days_offset ──
   const startIso = currentEmployee?.start_date ?? '2026-06-16'
   const itTasks = tasks.filter((t) => t.phase_id === 'it')
-  const itLeft = itTasks.filter((t) => !statusDone(t.id)).length
-  const { acknowledgedCount, total: polTotal } = getPolicyAckState()
+  const itLeft = itTasks.filter((t) => statusMap.get(t.id) !== 'done').length
+  const { acknowledgedCount, total: polTotal } = data.policy
   const polLeft = polTotal - acknowledgedCount
 
-  // days_offset values mirror the onboarding seed for these areas (IT verify = 1,
-  // policies = 5, training/orientation = ~4). Forms aren't in the task seam, so
-  // the prototype's forms row is folded into the workflow CTA.
   const thisWeek = buildThisWeek(startIso, [
     {
       key: 'it',
@@ -168,10 +187,8 @@ function EmployeeDashboard({ currentEmployee }: { currentEmployee: Employee | nu
     },
   ])
 
-  const contacts = curatedContacts(currentEmployee)
+  const contacts = curatedContacts(currentEmployee, data.roster)
 
-  // Focus | Journey toggle state. Controlled so the segmented bar (in the section
-  // header) and the full-width panel below it stay in sync.
   const [hero, setHero] = useState<'focus' | 'journey'>('focus')
 
   return (
@@ -238,12 +255,7 @@ function EmployeeDashboard({ currentEmployee }: { currentEmployee: Employee | nu
             <ul className="divide-y divide-surface-border-light">
               {contacts.map((c) => (
                 <li key={c.tagline} className="flex items-center gap-3 px-[18px] py-3.5">
-                  <Avatar
-                    name={c.name}
-                    color={c.color}
-                    size="sm"
-                    label={c.name}
-                  />
+                  <Avatar name={c.name} color={c.color} size="sm" label={c.name} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-bold text-text">{c.name}</div>
                     <div className="truncate text-[11.5px] text-text-muted">{c.role}</div>
@@ -318,9 +330,6 @@ function FocusPanel({ pct, done, total }: { pct: number; done: number; total: nu
 }
 
 function JourneyPanel({ pct }: { pct: number }) {
-  // Mark the journey steps done/current/upcoming from the onboarding progress.
-  // The first uncompleted-share step is "current"; everything before it is done.
-  // We approximate completion by mapping pct across the six fixed steps.
   const completedSteps = Math.floor((pct / 100) * JOURNEY_DEFS.length)
   return (
     <Card>
@@ -375,9 +384,7 @@ function JourneyPanel({ pct }: { pct: number }) {
                   >
                     {step.label}
                   </span>
-                  {state === 'current' ? (
-                    <Badge color="red">In progress</Badge>
-                  ) : null}
+                  {state === 'current' ? <Badge color="red">In progress</Badge> : null}
                 </div>
                 <div className="mt-0.5 text-[12.5px] text-text-muted">{step.sub}</div>
               </div>
@@ -390,7 +397,6 @@ function JourneyPanel({ pct }: { pct: number }) {
 }
 
 function ProgressRing({ pct }: { pct: number }) {
-  // r=52 → circumference ≈ 327 (matches the prototype's stroke-dasharray).
   const circumference = 327
   const offset = Math.round(circumference * (1 - pct / 100))
   return (
@@ -426,17 +432,16 @@ function ProgressRing({ pct }: { pct: number }) {
 }
 
 // Curated three contacts: manager (via manager_id), IT support, HR & payroll.
-function curatedContacts(employee: Employee | null): Array<{
-  name: string
-  role: string
-  tagline: string
-  color: string
-}> {
-  const all = listEmployees()
+function curatedContacts(
+  employee: Employee | null,
+  roster: Employee[],
+): Array<{ name: string; role: string; tagline: string; color: string }> {
   const byTitle = (match: (e: Employee) => boolean): Employee | undefined =>
-    all.find(match)
+    roster.find(match)
 
-  const manager = employee?.manager_id ? getEmployee(employee.manager_id) : undefined
+  const manager = employee?.manager_id
+    ? roster.find((e) => e.id === employee.manager_id)
+    : undefined
   const it =
     byTitle((e) => e.department === 'IT' && /support/i.test(e.job_title ?? '')) ??
     byTitle((e) => e.department === 'IT')
@@ -460,49 +465,48 @@ function curatedContacts(employee: Employee | null): Array<{
 
 // ── Staff (manager / admin) view ──────────────────────────────────────────────
 
-function StaffDashboard({
-  role,
-  currentEmployee,
-}: {
-  role: UserRole
-  currentEmployee: Employee | null
-}) {
-  // Team-at-a-glance roster stats from the full roster.
-  const roster = listEmployees()
-  const rosterStats: Array<{ value: number; label: string; accent: 'blue' | 'amber' | 'green' | 'red' }> = [
+function StaffDashboard({ role, data }: { role: UserRole; data: DashboardData }) {
+  const roster = data.roster
+  const employeeById = employeeMapOf(roster)
+
+  const rosterStats: Array<{
+    value: number
+    label: string
+    accent: 'blue' | 'amber' | 'green' | 'red'
+  }> = [
     { value: roster.length, label: 'Employees', accent: 'blue' },
     { value: roster.filter((e) => e.status === 'onboarding').length, label: 'Onboarding', accent: 'amber' },
     { value: roster.filter((e) => e.status === 'probation').length, label: 'On probation', accent: 'red' },
     { value: roster.filter((e) => e.status === 'active').length, label: 'Active', accent: 'green' },
   ]
 
-  // Certifications needing recertification — product certs expiring/expired,
-  // scoped by role via the certifications accessor (manager = team only).
-  const certAlerts = listCertifications(role, currentEmployee?.id ?? '', currentEmployee?.id)
+  const certAlerts = data.certifications
     .filter((c) => c.cclass === 'product')
     .map((c) => ({ cert: c, exp: certExpiryInfo(c.expiry) }))
     .filter((x) => x.exp.state === 'soon' || x.exp.state === 'expired')
     .sort((a, b) => (a.exp.days ?? 9999) - (b.exp.days ?? 9999))
 
-  // Billable-readiness pipeline — counts derived from getBillableSummary() (which
-  // already computes each consultant's stage via the shared billableStage ladder).
-  const summary = getBillableSummary()
-  const stageCounts = countSummaryStages(summary)
+  const stageCounts = countSummaryStages(data.billableSummary)
 
-  // Approvals queue — submitted expense claims + staff with outstanding policy
-  // sign-offs. Task rollups use listTasks(role), never listTasks('admin').
-  const submittedClaims = listExpenseClaims().filter((c) => c.status === 'submitted')
-  const policyOutstanding = getOnboardingSummary().filter(
+  const submittedClaims = data.expenseClaims.filter((c) => c.status === 'submitted')
+  const policyOutstanding = data.onboardingSummary.filter(
     (o) => o.policies_done < o.policies_total,
   )
-  const approvals: Array<{ key: string; icon: string; title: string; detail: string; href: string; color: 'amber' | 'red' }> = []
+  const approvals: Array<{
+    key: string
+    icon: string
+    title: string
+    detail: string
+    href: string
+    color: 'amber' | 'red'
+  }> = []
   if (submittedClaims.length > 0) {
     approvals.push({
       key: 'claims',
       icon: '💰',
       title: `${submittedClaims.length} expense ${submittedClaims.length === 1 ? 'claim' : 'claims'} awaiting finance`,
       detail: submittedClaims
-        .map((c) => getEmployee(c.employee_id)?.display_name ?? 'Unknown')
+        .map((c) => employeeById.get(c.employee_id)?.display_name ?? 'Unknown')
         .join(', '),
       href: '/expenses',
       color: 'amber',
@@ -518,6 +522,8 @@ function StaffDashboard({
       color: 'red',
     })
   }
+
+  void role // role currently informs only the (live-empty) certification scope
 
   return (
     <div className="space-y-7">
@@ -558,6 +564,7 @@ function StaffDashboard({
               <CertAlertCard
                 key={cert.id}
                 cert={cert}
+                person={employeeById.get(cert.employee_id)}
                 expLabel={exp.label}
                 expired={exp.state === 'expired'}
               />
@@ -636,26 +643,22 @@ function StaffDashboard({
 
 function CertAlertCard({
   cert,
+  person,
   expLabel,
   expired,
 }: {
   cert: Certification
+  person: Employee | undefined
   expLabel: string
   expired: boolean
 }) {
-  const person = getEmployee(cert.employee_id)
   return (
     <Link
       href="/certifications"
       className="flex items-center gap-3.5 rounded-card border border-surface-border border-l-4 bg-surface-card px-[18px] py-4 shadow-card transition-shadow hover:shadow-card-lg"
       style={{ borderLeftColor: expired ? '#911431' : '#C4880C' }}
     >
-      <Avatar
-        name={person?.display_name}
-        color="#1a1a1a"
-        size="sm"
-        label={person?.display_name}
-      />
+      <Avatar name={person?.display_name} color="#1a1a1a" size="sm" label={person?.display_name} />
       <div className="min-w-0 flex-1">
         <div className="text-[13.5px] font-bold leading-tight text-text">{cert.name}</div>
         <div className="truncate text-[11.5px] text-text-muted">
@@ -667,8 +670,7 @@ function CertAlertCard({
   )
 }
 
-// Map a badge palette colour to its hex token (for inline border / dot styling
-// where Tailwind utility classes can't carry a runtime-chosen colour).
+// Map a badge palette colour to its hex token (for inline border / dot styling).
 function accentHex(color: string): string {
   switch (color) {
     case 'red':
