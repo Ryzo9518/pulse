@@ -32,7 +32,7 @@ import {
 } from '@/components/ui'
 import { useSession } from '@/lib/mock/session'
 import { can } from '@/lib/capabilities'
-import { listEmployees, listTeam } from '@/lib/mock'
+import { useDirectory } from '@/lib/data/useDirectory'
 import { rosterColumnKeys } from '@/lib/roster'
 import type { Employee, EmployeeStatus, UserRole } from '@/types/database'
 
@@ -58,6 +58,7 @@ export default function AdminEmployeesPage() {
   const { role, currentEmployee } = useSession()
   const router = useRouter()
   const { toast } = useToast()
+  const { employees: allEmployees, loading, error } = useDirectory()
 
   // ── Capability guard ──
   // Managers and admins may view a roster; employees are redirected and render
@@ -74,10 +75,39 @@ export default function AdminEmployeesPage() {
     return null
   }
 
+  if (loading || error) {
+    return (
+      <AppShell>
+        <PageHeader
+          eyebrow={canSeePersonal ? 'Admin' : 'My team'}
+          title={canSeePersonal ? 'All Employees' : 'My Team'}
+        />
+        <div className="px-10 py-8">
+          {error ? (
+            <Card>
+              <p className="text-sm text-jera-red" role="alert">
+                Couldn’t load the roster ({error}). Please refresh.
+              </p>
+            </Card>
+          ) : (
+            <div className="space-y-2" aria-busy="true" aria-label="Loading roster">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-12 animate-pulse rounded-card bg-surface-card"
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </AppShell>
+    )
+  }
+
   // Admin sees everyone; manager sees only their direct team.
   const employees = canSeePersonal
-    ? listEmployees()
-    : listTeam(currentEmployee?.id ?? '')
+    ? allEmployees
+    : allEmployees.filter((e) => e.manager_id === currentEmployee?.id)
 
   // Admin-only roster stats (Total / Active / Onboarding), computed live from the
   // visible roster. Not shown to managers.
