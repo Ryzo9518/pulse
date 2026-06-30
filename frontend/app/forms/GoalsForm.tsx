@@ -4,12 +4,13 @@ import { useState } from 'react'
 
 import { Button, Card, Input } from '@/components/ui'
 
-import type { FormSubViewProps } from './PersonalForm'
+import { type FormSubViewProps, SaveError } from './PersonalForm'
 import {
   validateForm,
   type FieldErrors,
   type FormValues,
 } from './forms-config'
+import { useFormPersistence } from './useFormPersistence'
 
 interface GoalBlock {
   /** Field-name prefix, e.g. "goal30". */
@@ -64,6 +65,7 @@ const BLOCKS: GoalBlock[] = [
 export function GoalsForm({ onComplete, onBack }: FormSubViewProps) {
   const [values, setValues] = useState<FormValues>({})
   const [errors, setErrors] = useState<FieldErrors>({})
+  const { saving, saveError, persist } = useFormPersistence('goals', setValues)
 
   const set = (name: string) => (e: { target: { value: string } }) =>
     setValues((prev) => ({ ...prev, [name]: e.target.value }))
@@ -71,7 +73,7 @@ export function GoalsForm({ onComplete, onBack }: FormSubViewProps) {
   const handleSave = () => {
     const found = validateForm('goals', values)
     setErrors(found)
-    if (Object.keys(found).length === 0) onComplete()
+    if (Object.keys(found).length === 0) persist(values, onComplete)
   }
 
   return (
@@ -102,11 +104,17 @@ export function GoalsForm({ onComplete, onBack }: FormSubViewProps) {
       ))}
 
       <Card>
+        <SaveError message={saveError} />
         <div className="flex gap-2">
           <Button variant="ghost" onClick={onBack}>
             ← Back
           </Button>
-          <Button variant="primary" fullWidth onClick={handleSave}>
+          <Button
+            variant="primary"
+            fullWidth
+            onClick={handleSave}
+            isLoading={saving}
+          >
             Save Goals &amp; Complete Forms →
           </Button>
         </div>

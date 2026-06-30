@@ -6,12 +6,13 @@ import { Button, Card, Input, Select } from '@/components/ui'
 import { ACCOUNT_TYPES, SA_BANKS } from '@/lib/constants'
 
 import { ConsentCheckbox } from './ConsentCheckbox'
-import type { FormSubViewProps } from './PersonalForm'
+import { type FormSubViewProps, SaveError } from './PersonalForm'
 import {
   validateForm,
   type FieldErrors,
   type FormValues,
 } from './forms-config'
+import { useFormPersistence } from './useFormPersistence'
 
 const BANK_OPTIONS = SA_BANKS.map((b) => ({ value: b, label: b }))
 const ACCOUNT_TYPE_OPTIONS = ACCOUNT_TYPES.map((t) => ({ value: t, label: t }))
@@ -26,6 +27,7 @@ export function TaxForm({ onComplete, onBack }: FormSubViewProps) {
   const [values, setValues] = useState<FormValues>({})
   const [consent, setConsent] = useState(false)
   const [errors, setErrors] = useState<FieldErrors>({})
+  const { saving, saveError, persist } = useFormPersistence('tax', setValues)
 
   const set = (name: string) => (e: { target: { value: string } }) =>
     setValues((prev) => ({ ...prev, [name]: e.target.value }))
@@ -36,7 +38,7 @@ export function TaxForm({ onComplete, onBack }: FormSubViewProps) {
       consent: consent ? 'true' : 'false',
     })
     setErrors(found)
-    if (Object.keys(found).length === 0) onComplete()
+    if (Object.keys(found).length === 0) persist(values, onComplete)
   }
 
   return (
@@ -115,11 +117,17 @@ export function TaxForm({ onComplete, onBack }: FormSubViewProps) {
             and statutory deductions.
           </ConsentCheckbox>
         </div>
+        <SaveError message={saveError} />
         <div className="flex gap-2">
           <Button variant="ghost" onClick={onBack}>
             ← Back
           </Button>
-          <Button variant="primary" fullWidth onClick={handleSave}>
+          <Button
+            variant="primary"
+            fullWidth
+            onClick={handleSave}
+            isLoading={saving}
+          >
             Save &amp; Continue →
           </Button>
         </div>

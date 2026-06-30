@@ -10,12 +10,26 @@ import {
   type FieldErrors,
   type FormValues,
 } from './forms-config'
+import { useFormPersistence } from './useFormPersistence'
 
 export interface FormSubViewProps {
   /** Called with no args when the form passes validation on Save. */
   onComplete: () => void
   /** Back to the forms overview. */
   onBack: () => void
+}
+
+/** Inline "couldn't save" banner shared by the form sub-views. */
+export function SaveError({ message }: { message: string | null }) {
+  if (!message) return null
+  return (
+    <div
+      role="alert"
+      className="rounded-btn border border-jera-red/30 bg-jera-red/10 px-[14px] py-[10px] text-[13px] text-jera-red"
+    >
+      {message}
+    </div>
+  )
 }
 
 const PROVINCE_OPTIONS = SA_PROVINCES.map((p) => ({ value: p, label: p }))
@@ -30,6 +44,7 @@ const GENDER_OPTIONS = [
 export function PersonalForm({ onComplete, onBack }: FormSubViewProps) {
   const [values, setValues] = useState<FormValues>({})
   const [errors, setErrors] = useState<FieldErrors>({})
+  const { saving, saveError, persist } = useFormPersistence('personal', setValues)
 
   const set = (name: string) => (e: { target: { value: string } }) =>
     setValues((prev) => ({ ...prev, [name]: e.target.value }))
@@ -37,7 +52,7 @@ export function PersonalForm({ onComplete, onBack }: FormSubViewProps) {
   const handleSave = () => {
     const found = validateForm('personal', values)
     setErrors(found)
-    if (Object.keys(found).length === 0) onComplete()
+    if (Object.keys(found).length === 0) persist(values, onComplete)
   }
 
   return (
@@ -148,11 +163,17 @@ export function PersonalForm({ onComplete, onBack }: FormSubViewProps) {
           value={values.email ?? ''}
           onChange={set('email')}
         />
+        <SaveError message={saveError} />
         <div className="mt-2 flex gap-2">
           <Button variant="ghost" onClick={onBack}>
             ← Back
           </Button>
-          <Button variant="primary" fullWidth onClick={handleSave}>
+          <Button
+            variant="primary"
+            fullWidth
+            onClick={handleSave}
+            isLoading={saving}
+          >
             Save &amp; Continue →
           </Button>
         </div>
