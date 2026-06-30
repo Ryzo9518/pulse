@@ -13,13 +13,20 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react'
+import {
+  signOut as nextAuthSignOut,
+  useSession as useAuthSession,
+} from 'next-auth/react'
 
 import type { Employee, UserRole } from '@/types/database'
 import { getCurrentEmployee, getEmployee } from '@/lib/mock'
+
+const LIVE = process.env.NEXT_PUBLIC_PULSE_DATA === 'live'
 
 // Dev-only: which mock identity backs each view role. Team scoping reads
 // currentEmployee.id, so the manager view must be a lead with real direct
@@ -66,6 +73,83 @@ export interface MockSessionProviderProps {
  * employee in the 'employee' view.
  */
 export function MockSessionProvider({ children }: MockSessionProviderProps) {
+  return LIVE ? (
+    <LiveSessionProvider>{children}</LiveSessionProvider>
+  ) : (
+    <MockSessionProviderImpl>{children}</MockSessionProviderImpl>
+  )
+}
+
+function SessionLoading() {
+  return (
+    <div className="flex min-h-screen items-center justify-center text-sm text-text-muted">
+      Loading your profile…
+    </div>
+  )
+}
+
+/**
+ * Live session: the real signed-in employee from Auth.js. The full employee
+ * record is fetched through the RLS proxy so every screen's `currentEmployee`
+ * is the actual person (name, avatar, role) — never a mock persona. Render is
+ * gated until the profile loads, so `currentEmployee` is always non-null below.
+ */
+function LiveSessionProvider({ children }: MockSessionProviderProps) {
+  const { data, status } = useAuthSession()
+  const sessionEmployee = data?.employee
+  const [employee, setEmployee] = useState<Employee | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    const id = sessionEmployee?.id
+    if (!id) return
+    let active = true
+    fetch(`/api/rest/employees?id=eq.${encodeURIComponent(id)}&limit=1`, {
+      cache: 'no-store',
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status))
+        return r.json() as Promise<Employee[]>
+      })
+      .then((rows) => {
+        if (active) setEmployee(rows[0] ?? null)
+      })
+      .catch(() => {
+        if (active) setFailed(true)
+      })
+    return () => {
+      active = false
+    }
+  }, [sessionEmployee?.id])
+
+  const value = useMemo<MockSessionValue>(
+    () => ({
+      currentEmployee: employee,
+      role: (sessionEmployee?.role as UserRole) ?? 'employee',
+      isAuthenticated: status === 'authenticated',
+      setRole: () => {}, // real role from the session — no dev switch when live
+      signOut: () => {
+        void nextAuthSignOut({ callbackUrl: '/login' })
+      },
+    }),
+    [employee, sessionEmployee?.role, status],
+  )
+
+  if (
+    status === 'loading' ||
+    (status === 'authenticated' && !employee && !failed)
+  ) {
+    return <SessionLoading />
+  }
+
+  return (
+    <MockSessionContext.Provider value={value}>
+      {children}
+    </MockSessionContext.Provider>
+  )
+}
+
+function MockSessionProviderImpl({ children }: MockSessionProviderProps) {
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(() =>
     getCurrentEmployee(),
   )
