@@ -40,6 +40,9 @@ import {
 } from '@/lib/mock'
 import { deriveWorkEmail } from '@/lib/onboardGenerate'
 import type { ProductId } from '@/types/database'
+import { createOnboardingHire } from './actions'
+
+const LIVE = process.env.NEXT_PUBLIC_PULSE_DATA === 'live'
 
 const DEPARTMENTS = [
   'Management',
@@ -106,6 +109,7 @@ export default function AdminOnboardPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [errors, setErrors] = useState<FormErrors>({})
   const [created, setCreated] = useState<CreatedHire | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
   const departmentOptions: SelectOption[] = useMemo(
     () => DEPARTMENTS.map((d) => ({ value: d, label: d })),
@@ -151,7 +155,7 @@ export default function AdminOnboardPage() {
     return next
   }
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const validationErrors = validate(form)
     if (Object.keys(validationErrors).length > 0) {
@@ -169,6 +173,39 @@ export default function AdminOnboardPage() {
     const email = deriveWorkEmail(form.email, name)
     const product = listProducts().find((p) => p.id === form.product)
     const productName = product?.name ?? form.product
+
+    if (LIVE) {
+      setSubmitting(true)
+      const res = await createOnboardingHire({
+        name,
+        email,
+        jobTitle: form.jobTitle.trim(),
+        department: form.department,
+        startDate: form.startDate,
+      })
+      setSubmitting(false)
+      if (!res.ok) {
+        toast({
+          title: 'Could not onboard',
+          message: res.error ?? 'Please try again.',
+          variant: 'error',
+        })
+        return
+      }
+      setCreated({
+        name,
+        email,
+        detail: `${form.jobTitle.trim()} · ${res.taskCount} onboarding tasks generated · they can now sign in with their Microsoft account (${email})`,
+      })
+      setForm(EMPTY_FORM)
+      setErrors({})
+      toast({
+        title: 'Onboarding started',
+        message: `${name} added to the roster. ${res.taskCount} tasks generated.`,
+        variant: 'success',
+      })
+      return
+    }
 
     setCreated({
       name,
@@ -291,7 +328,12 @@ export default function AdminOnboardPage() {
               value={form.buddy}
               onChange={(e) => update('buddy', e.target.value)}
             />
-            <Button type="submit" variant="primary" fullWidth>
+            <Button
+              type="submit"
+              variant="primary"
+              fullWidth
+              isLoading={submitting}
+            >
               Create Employee &amp; Start Onboarding
             </Button>
           </form>
