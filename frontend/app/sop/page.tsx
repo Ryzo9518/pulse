@@ -1,11 +1,11 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge, Button, Card, ProgressBar, Tabs, useToast } from '@/components/ui'
-import { listSops, listSopSteps } from '@/lib/mock'
+import { useSops } from '@/lib/data/useSops'
 import { useSession } from '@/lib/mock/session'
 import type { SopKey } from '@/types/database'
 
@@ -13,18 +13,17 @@ export default function SopPage() {
   const { toast } = useToast()
   const { currentEmployee } = useSession()
 
-  const sops = useMemo(() => listSops(), [])
+  const { sops, stepsByKey, loading, error } = useSops()
 
   // Active SOP + current step (0-based). Step resets when the SOP changes.
-  const [activeSop, setActiveSop] = useState<SopKey>(sops[0]?.key ?? 'projects')
+  const [activeSop, setActiveSop] = useState<SopKey>('projects')
   const [stepIndex, setStepIndex] = useState(0)
 
-  // Locally-tracked completion: no SOP-completion mutator exists in the mock
-  // accessor layer yet, so we record completions in component state. Resets on
-  // a full page reload, consistent with the rest of the mock phase.
+  // Locally-tracked completion: no SOP-completion mutator exists yet, so we
+  // record completions in component state. Resets on a full page reload.
   const [completed, setCompleted] = useState<Record<string, boolean>>({})
 
-  const steps = useMemo(() => listSopSteps(activeSop), [activeSop])
+  const steps = stepsByKey.get(activeSop) ?? []
   const totalSteps = steps.length
   const step = steps[stepIndex]
   const activeSopMeta = sops.find((s) => s.key === activeSop)
@@ -34,6 +33,36 @@ export default function SopPage() {
   const sopDone = Boolean(completed[activeSop])
 
   const completedCount = sops.filter((s) => completed[s.key]).length
+
+  if (loading || error) {
+    return (
+      <AppShell>
+        <PageHeader
+          eyebrow="Onboarding"
+          title="SOP Walkthroughs"
+          subtitle="Step-by-step guides to the systems you'll use every day at Jera."
+        />
+        <div className="mx-auto w-full max-w-3xl px-10 py-8">
+          {error ? (
+            <Card>
+              <p className="text-sm text-jera-red" role="alert">
+                Couldn’t load SOPs ({error}). Please refresh.
+              </p>
+            </Card>
+          ) : (
+            <div className="space-y-3" aria-busy="true" aria-label="Loading SOPs">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-16 animate-pulse rounded-card bg-surface-card"
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </AppShell>
+    )
+  }
 
   function selectSop(key: SopKey) {
     setActiveSop(key)
