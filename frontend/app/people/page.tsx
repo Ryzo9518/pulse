@@ -6,7 +6,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, Avatar, Badge, Input, EmptyState } from '@/components/ui'
 import type { BadgeColor } from '@/components/ui'
-import { listEmployees } from '@/lib/mock'
+import { useDirectory } from '@/lib/data/useDirectory'
 import { filterDirectory } from '@/lib/directory'
 import type { EmployeeStatus } from '@/types/database'
 
@@ -39,7 +39,7 @@ const DOT_CLASSES: Record<BadgeColor, string> = {
 }
 
 export default function PeoplePage() {
-  const employees = listEmployees()
+  const { employees, loading, error } = useDirectory()
   const [search, setSearch] = useState('')
 
   // Live filter over the work-only haystack (name + title + department), matching
@@ -65,7 +65,27 @@ export default function PeoplePage() {
         }
       />
       <div className="px-10 py-8">
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div
+            className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+            aria-busy="true"
+            aria-label="Loading the people directory"
+          >
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Card key={i} className="flex flex-col items-center text-center">
+                <div className="mb-4 h-16 w-16 animate-pulse rounded-full bg-surface" />
+                <div className="h-4 w-24 animate-pulse rounded bg-surface" />
+                <div className="mt-2 h-3 w-20 animate-pulse rounded bg-surface" />
+              </Card>
+            ))}
+          </div>
+        ) : error ? (
+          <EmptyState
+            icon="⚠️"
+            title="Couldn’t load the directory"
+            description={`${error}. Please refresh, or contact IT if it keeps happening.`}
+          />
+        ) : filtered.length === 0 ? (
           <EmptyState
             icon="🔍"
             title="No matches"
