@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseTable, buildUpstreamUrl } from '../rest-proxy'
+import { parseTable, buildUpstreamUrl, isWriteAllowed } from '../rest-proxy'
 
 describe('parseTable', () => {
   it('accepts a single valid table/view name', () => {
@@ -21,6 +21,25 @@ describe('parseTable', () => {
     expect(parseTable(['employees;drop'])).toBeNull()
     expect(parseTable(['1table'])).toBeNull()
     expect(parseTable(['has space'])).toBeNull()
+  })
+})
+
+describe('isWriteAllowed', () => {
+  it('allows the configured methods for an allow-listed table', () => {
+    expect(isWriteAllowed('hr_policy_acknowledgements', 'POST')).toBe(true)
+    expect(isWriteAllowed('hr_policy_acknowledgements', 'PATCH')).toBe(true)
+  })
+
+  it('denies methods not configured for the table', () => {
+    expect(isWriteAllowed('hr_policy_acknowledgements', 'DELETE')).toBe(false)
+    expect(isWriteAllowed('hr_policy_acknowledgements', 'GET')).toBe(false)
+  })
+
+  it('denies writes to tables not on the allowlist', () => {
+    expect(isWriteAllowed('employees', 'POST')).toBe(false)
+    expect(isWriteAllowed('audit_log', 'POST')).toBe(false)
+    expect(isWriteAllowed('employee_tax_banking', 'PATCH')).toBe(false)
+    expect(isWriteAllowed(null, 'POST')).toBe(false)
   })
 })
 
