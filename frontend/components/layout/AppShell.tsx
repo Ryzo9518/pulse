@@ -22,6 +22,10 @@ import { shouldRedirectToPolicies } from '@/lib/policyGate'
 import { Sidebar } from './Sidebar'
 import { RoleSwitch } from './RoleSwitch'
 
+// The RoleSwitch is a dev affordance for the mock phase. In live mode the role
+// comes from the real signed-in account, so it's hidden.
+const LIVE = process.env.NEXT_PUBLIC_PULSE_DATA === 'live'
+
 export interface AppShellProps {
   children: ReactNode
 }
@@ -63,11 +67,13 @@ export function AppShell({ children }: AppShellProps) {
     <div className="flex h-screen w-full overflow-hidden bg-surface">
       <Sidebar />
       <main className="relative flex-1 overflow-y-auto bg-surface">
-        <div className="pointer-events-none absolute right-6 top-6 z-40">
-          <div className="pointer-events-auto">
-            <RoleSwitch />
+        {!LIVE ? (
+          <div className="pointer-events-none absolute right-6 top-6 z-40">
+            <div className="pointer-events-auto">
+              <RoleSwitch />
+            </div>
           </div>
-        </div>
+        ) : null}
         {children}
       </main>
     </div>
