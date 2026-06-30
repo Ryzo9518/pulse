@@ -1,47 +1,109 @@
-// Full Auth.js instance (Node runtime). Extends the edge-safe config with the
-// DB-touching callbacks that gate sign-in to real Pulse employees and carry the
-// employee identity into the session.
-import NextAuth from 'next-auth'
-import authConfig from './auth.config'
-import { resolveEmployeeByEmail } from '@/lib/auth/employee-directory'
+// ── Auth.js (NextAuth v5) — Microsoft Entra ID sign-in ───────────────────────
+// Authenticates Jera staff via Microsoft 365, resolves them to a Pulse
+// `employees` row, and mints the short-lived PostgREST token the data layer
+// uses. RLS — not the app — is the real authorization boundary.
+//
+// SECURITY (POPIA): the PostgREST signing secret and the service-role JWT live
+// in server env only and never reach the browser. Only the minted user token is
+// exposed to the session (the browser may carry it to call PostgREST directly).
 
-function emailFromProfile(profile: unknown): string {
-  const p = (profile ?? {}) as Record<string, unknown>
-  return (
-    ((p.email as string) || (p.preferred_username as string) || '') as string
-  )
+import NextAuth, { type Session } from 'next-auth'
+import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id'
+
+import {
+  resolveSignInEmployee,
+  EmployeeNotFoundError,
+  type ResolvedEmployee,
+  type ResolutionDeps,
+} from '@/lib/auth/employee-resolution'
+import { mintPulseToken } from '@/lib/auth/pulse-token'
+
+function resolutionDeps(): ResolutionDeps {
+  const postgrestUrl = process.env.PULSE_POSTGREST_URL
+  const serviceJwt = process.env.PULSE_SERVICE_JWT
+  if (!postgrestUrl || !serviceJwt) {
+    throw new Error('PULSE_POSTGREST_URL and PULSE_SERVICE_JWT must be set')
+  }
+  return { postgrestUrl, serviceJwt }
+}
+
+/** Pull the email + Entra object id out of the provider profile claims. */
+function identityFromProfile(profile: Record<string, unknown> | undefined): {
+  email?: string
+  oid?: string
+  name?: string
+} {
+  if (!profile) return {}
+  const email = (profile.email ?? profile.preferred_username) as string | undefined
+  const oid = (profile.oid ?? profile.sub) as string | undefined
+  const name = profile.name as string | undefined
+  return { email, oid, name }
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  ...authConfig,
+  providers: [
+    MicrosoftEntraID({
+      clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
+      clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
+      issuer: process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER,
+      authorization: { params: { scope: 'openid profile email User.Read' } },
+    }),
+  ],
   session: { strategy: 'jwt' },
   callbacks: {
-    ...authConfig.callbacks,
-    // Gate: only Microsoft users who own a Pulse employee record may sign in.
+    // Deny sign-in for any Entra user who maps to no employee row.
     async signIn({ profile }) {
-      const employee = await resolveEmployeeByEmail(emailFromProfile(profile))
-      return employee !== null
+      const { email, oid } = identityFromProfile(profile)
+      if (!email || !oid) return false
+      try {
+        await resolveSignInEmployee({ email, oid }, resolutionDeps())
+        return true
+      } catch (err) {
+        if (err instanceof EmployeeNotFoundError) return false
+        throw err
+      }
     },
-    // Stamp the employee identity onto the session token at sign-in.
+    // On first sign-in, persist the resolved employee onto the Auth.js token.
     async jwt({ token, profile }) {
       if (profile) {
-        const employee = await resolveEmployeeByEmail(emailFromProfile(profile))
-        if (employee) {
-          token.employeeId = employee.id
-          token.authUserId = employee.auth_user_id ?? employee.id
-          token.role = employee.role
-          token.displayName = employee.display_name
+        const { email, oid } = identityFromProfile(profile)
+        if (email && oid) {
+          const employee = await resolveSignInEmployee({ email, oid }, resolutionDeps())
+          token.employee = publicEmployee(employee)
+          token.authUserId = employee.auth_user_id ?? oid
         }
       }
       return token
     },
+    // Expose the employee + a freshly-minted PostgREST token to the session.
     async session({ session, token }) {
-      if (session.user) {
-        session.user.employeeId = token.employeeId as string | undefined
-        session.user.role = token.role as string | undefined
-        if (token.displayName) session.user.name = token.displayName as string
+      const employee = token.employee as Session['employee']
+      const authUserId = token.authUserId as string | undefined
+      if (employee) session.employee = employee
+      if (authUserId) {
+        const secret = process.env.PULSE_PG_JWT_SECRET
+        if (secret) {
+          session.pulseToken = await mintPulseToken({ authUserId, secret })
+        }
       }
       return session
     },
   },
+  pages: {
+    signIn: '/login',
+    error: '/login',
+  },
 })
+
+/** The employee fields safe to carry in the session (no internal-only data). */
+function publicEmployee(emp: ResolvedEmployee) {
+  return {
+    id: emp.id,
+    email: emp.email,
+    firstName: emp.first_name,
+    lastName: emp.last_name,
+    displayName: emp.display_name,
+    role: emp.role,
+    isOwner: emp.is_owner,
+  }
+}

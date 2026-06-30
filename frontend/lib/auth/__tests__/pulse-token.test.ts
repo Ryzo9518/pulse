@@ -1,54 +1,57 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll } from 'vitest'
-import { jwtVerify, decodeProtectedHeader } from 'jose'
+// jose uses Web Crypto and checks `instanceof Uint8Array`; jsdom's cross-realm
+// typed arrays fail that check. This module only ever runs server-side (Node),
+// so test it in the Node environment where it actually executes.
+import { describe, it, expect } from 'vitest'
+import { jwtVerify } from 'jose'
 
-const SECRET = 'unit-test-secret-please-ignore-1234567890'
+import { mintPulseToken, POSTGREST_AUTHENTICATED_ROLE } from '../pulse-token'
 
-beforeAll(() => {
-  process.env.PULSE_PG_JWT_SECRET = SECRET
-})
+const SECRET = 'test-shared-postgrest-secret-at-least-32-bytes-long'
 
-async function mint() {
-  // Imported lazily so the env var is set before the module reads it.
-  const { mintAuthenticatedToken } = await import('../pulse-token')
-  return mintAuthenticatedToken
+async function verify(token: string, atSeconds: number) {
+  // Tokens are minted with a fixed `nowSeconds`, so verify relative to that
+  // instant rather than the real wall clock (which would see them as expired).
+  const { payload } = await jwtVerify(token, new TextEncoder().encode(SECRET), {
+    currentDate: new Date(atSeconds * 1000),
+  })
+  return payload
 }
 
-describe('mintAuthenticatedToken', () => {
-  it('signs an HS256 token PostgREST will accept', async () => {
-    const mintAuthenticatedToken = await mint()
-    const sub = '00000000-0000-0000-0000-000000000001'
-    const token = await mintAuthenticatedToken(sub, 3600)
-
-    expect(decodeProtectedHeader(token).alg).toBe('HS256')
-
-    const { payload } = await jwtVerify(
-      token,
-      new TextEncoder().encode(SECRET),
-    )
-    expect(payload.sub).toBe(sub)
-    expect(payload.role).toBe('authenticated')
-    expect(typeof payload.exp).toBe('number')
-    const now = Math.floor(Date.now() / 1000)
-    expect(payload.exp! - now).toBeGreaterThan(3500)
-    expect(payload.exp! - now).toBeLessThanOrEqual(3600)
+describe('mintPulseToken', () => {
+  it('mints a verifiable HS256 token with sub + authenticated role', async () => {
+    const token = await mintPulseToken({
+      authUserId: 'oid-abc-123',
+      secret: SECRET,
+      nowSeconds: 1_000,
+    })
+    const payload = await verify(token, 1_000)
+    expect(payload.sub).toBe('oid-abc-123')
+    expect(payload.role).toBe(POSTGREST_AUTHENTICATED_ROLE)
+    expect(payload.iat).toBe(1_000)
+    expect(payload.exp).toBe(1_000 + 3_600)
   })
 
-  it('rejects verification under the wrong secret', async () => {
-    const mintAuthenticatedToken = await mint()
-    const token = await mintAuthenticatedToken('x', 60)
+  it('honours a custom ttl', async () => {
+    const token = await mintPulseToken({
+      authUserId: 'oid-1',
+      secret: SECRET,
+      ttlSeconds: 120,
+      nowSeconds: 5_000,
+    })
+    const payload = await verify(token, 5_000)
+    expect(payload.exp).toBe(5_120)
+  })
+
+  it('fails verification against a different secret', async () => {
+    const token = await mintPulseToken({ authUserId: 'oid-1', secret: SECRET })
     await expect(
-      jwtVerify(token, new TextEncoder().encode('a-different-secret')),
+      jwtVerify(token, new TextEncoder().encode('a-totally-different-secret-value')),
     ).rejects.toThrow()
   })
 
-  it('throws when the signing secret is absent', async () => {
-    const prev = process.env.PULSE_PG_JWT_SECRET
-    delete process.env.PULSE_PG_JWT_SECRET
-    const mintAuthenticatedToken = await mint()
-    await expect(mintAuthenticatedToken('x', 60)).rejects.toThrow(
-      /PULSE_PG_JWT_SECRET/,
-    )
-    process.env.PULSE_PG_JWT_SECRET = prev
+  it('throws when authUserId or secret is missing', async () => {
+    await expect(mintPulseToken({ authUserId: '', secret: SECRET })).rejects.toThrow(/authUserId/)
+    await expect(mintPulseToken({ authUserId: 'x', secret: '' })).rejects.toThrow(/secret/)
   })
 })
