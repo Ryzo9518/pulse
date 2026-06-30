@@ -5,12 +5,13 @@ import { useState } from 'react'
 import { Button, Card, Input, Select } from '@/components/ui'
 
 import { ConsentCheckbox } from './ConsentCheckbox'
-import type { FormSubViewProps } from './PersonalForm'
+import { type FormSubViewProps, SaveError } from './PersonalForm'
 import {
   validateForm,
   type FieldErrors,
   type FormValues,
 } from './forms-config'
+import { useFormPersistence } from './useFormPersistence'
 
 const RELATIONSHIP_OPTIONS = [
   { value: 'Spouse / Partner', label: 'Spouse / Partner' },
@@ -26,6 +27,7 @@ export function EmergencyForm({ onComplete, onBack }: FormSubViewProps) {
   const [values, setValues] = useState<FormValues>({})
   const [consent, setConsent] = useState(false)
   const [errors, setErrors] = useState<FieldErrors>({})
+  const { saving, saveError, persist } = useFormPersistence('emergency', setValues)
 
   const set = (name: string) => (e: { target: { value: string } }) =>
     setValues((prev) => ({ ...prev, [name]: e.target.value }))
@@ -36,7 +38,7 @@ export function EmergencyForm({ onComplete, onBack }: FormSubViewProps) {
       consent: consent ? 'true' : 'false',
     })
     setErrors(found)
-    if (Object.keys(found).length === 0) onComplete()
+    if (Object.keys(found).length === 0) persist(values, onComplete)
   }
 
   return (
@@ -194,11 +196,17 @@ export function EmergencyForm({ onComplete, onBack }: FormSubViewProps) {
             of an emergency.
           </ConsentCheckbox>
         </div>
+        <SaveError message={saveError} />
         <div className="flex gap-2">
           <Button variant="ghost" onClick={onBack}>
             ← Back
           </Button>
-          <Button variant="primary" fullWidth onClick={handleSave}>
+          <Button
+            variant="primary"
+            fullWidth
+            onClick={handleSave}
+            isLoading={saving}
+          >
             Save &amp; Continue →
           </Button>
         </div>
