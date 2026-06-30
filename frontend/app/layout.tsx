@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { Providers } from './providers'
 import { MockSessionProvider } from '@/lib/mock/session'
 import { ToastProvider } from '@/components/ui'
 
@@ -13,9 +14,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen">
-        <MockSessionProvider>
-          <ToastProvider>{children}</ToastProvider>
-        </MockSessionProvider>
+        <Providers>
+          <MockSessionProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </MockSessionProvider>
+        </Providers>
       </body>
     </html>
   )
