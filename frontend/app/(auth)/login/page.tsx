@@ -1,89 +1,69 @@
-'use client'
+import { redirect } from 'next/navigation'
 
-import { useState, type FormEvent } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-
-import { Button, Input } from '@/components/ui'
+import { auth, signIn } from '@/auth'
+import { Button } from '@/components/ui'
 import { AuthCard } from '../_components/AuthCard'
 
-// Login screen (mock). Validates a @jera.co.za email client-side; any password
-// is accepted. On submit, routes to the 2FA step. Mirrors the prototype's
-// `doLogin` flow (docs/pulse_v4_prototype.html).
-export default function LoginPage() {
-  const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
+// Real sign-in: Microsoft (Entra ID) only. MFA and password policy are owned by
+// Microsoft 365, so there is no password field here. Access is gated in the
+// Auth.js signIn callback to Jera staff who own a Pulse employee record.
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: { error?: string }
+}) {
+  const session = await auth()
+  if (session?.user) redirect('/dashboard')
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const trimmed = email.trim()
-    if (!trimmed.toLowerCase().endsWith('@jera.co.za')) {
-      setError('Please use your @jera.co.za email address.')
-      return
-    }
-    if (password.length < 1) {
-      setError('Please enter your password.')
-      return
-    }
-    setError(null)
-    setSubmitting(true)
-    router.push('/twofactor')
-  }
+  const deniedAccess = searchParams?.error === 'AccessDenied'
+  const otherError = Boolean(searchParams?.error) && !deniedAccess
 
   return (
-    <AuthCard glyph="P" title="Welcome to PULSE" subtitle="Sign in with your Jera account">
-      <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
-        {error ? (
+    <AuthCard
+      glyph="P"
+      title="Welcome to PULSE"
+      subtitle="Sign in with your Jera Microsoft account"
+    >
+      <div className="flex flex-col gap-4">
+        {deniedAccess ? (
           <div
             role="alert"
-            className="animate-shake rounded-btn border border-[#DB443730] bg-[#DB443710] px-[14px] py-[10px] text-[13px] text-[#DB4437]"
+            className="rounded-btn border border-[#DB443730] bg-[#DB443710] px-[14px] py-[10px] text-[13px] text-[#DB4437]"
           >
-            {error}
+            That Microsoft account isn&apos;t registered in Pulse yet. Please
+            contact HR to be added.
+          </div>
+        ) : null}
+        {otherError ? (
+          <div
+            role="alert"
+            className="rounded-btn border border-[#DB443730] bg-[#DB443710] px-[14px] py-[10px] text-[13px] text-[#DB4437]"
+          >
+            Sign-in didn&apos;t complete. Please try again.
           </div>
         ) : null}
 
-        <Input
-          label="Email address"
-          type="email"
-          name="email"
-          autoComplete="email"
-          placeholder="yourname@jera.co.za"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <Input
-          label="Password"
-          type="password"
-          name="password"
-          autoComplete="current-password"
-          placeholder="••••••••"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-
-        <Button type="submit" variant="primary" fullWidth isLoading={submitting} rightIcon={<span aria-hidden>→</span>}>
-          Sign In
-        </Button>
-
-        <Link
-          href="/forgot"
-          className="text-center text-[13px] font-medium text-jera-blue hover:underline"
+        <form
+          action={async () => {
+            'use server'
+            await signIn('microsoft-entra-id', { redirectTo: '/dashboard' })
+          }}
         >
-          Forgot your password?
-        </Link>
+          <Button
+            type="submit"
+            variant="primary"
+            fullWidth
+            rightIcon={<span aria-hidden>→</span>}
+          >
+            Sign in with Microsoft
+          </Button>
+        </form>
 
-        <div className="my-1 flex items-center gap-3">
-          <span className="h-px flex-1 bg-surface-border" />
-          <span className="text-[11px] font-semibold tracking-[1px] text-text-muted">DEMO</span>
-          <span className="h-px flex-1 bg-surface-border" />
-        </div>
         <p className="text-center text-xs leading-relaxed text-text-muted">
-          Use any <strong>@jera.co.za</strong> email and any password to continue.
+          Use your <strong>@jera.co.za</strong> Microsoft account. Access is
+          limited to current Jera staff.
         </p>
-      </form>
+      </div>
     </AuthCard>
   )
 }
