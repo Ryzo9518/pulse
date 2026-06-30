@@ -1,22 +1,31 @@
-import type { DefaultSession } from 'next-auth'
+// Type augmentation for Auth.js — adds the resolved Pulse employee + the minted
+// PostgREST token to the session and the internal JWT.
+import type { EmployeeRole } from '@/lib/auth/employee-resolution'
+
+/** The employee identity carried in the authenticated session. */
+export interface SessionEmployee {
+  id: string
+  email: string
+  firstName: string
+  lastName: string
+  displayName: string
+  role: EmployeeRole
+  isOwner: boolean
+}
 
 declare module 'next-auth' {
   interface Session {
-    user: {
-      /** Pulse employees.id (UUID). */
-      employeeId?: string
-      /** Pulse role: employee | manager | admin. */
-      role?: string
-    } & DefaultSession['user']
+    /** The signed-in Pulse employee (resolved from Microsoft Entra). */
+    employee?: SessionEmployee
+    /** Short-lived PostgREST token for live data calls (server-minted). */
+    pulseToken?: string
   }
 }
 
 declare module 'next-auth/jwt' {
   interface JWT {
-    employeeId?: string
-    /** The PostgREST JWT `sub` (employees.auth_user_id). */
+    employee?: SessionEmployee
+    /** The employee's auth_user_id (Entra oid after relink) — JWT `sub`. */
     authUserId?: string
-    role?: string
-    displayName?: string
   }
 }

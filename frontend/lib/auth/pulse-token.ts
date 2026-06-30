@@ -1,33 +1,51 @@
-// Server-only. Mints short-lived HS256 JWTs that PostgREST accepts.
+// ── PostgREST user-token minting (server-only) ───────────────────────────────
+// Mints the short-lived HS256 JWT that the data layer presents to PostgREST.
+// PostgREST reads the `role` claim to `SET ROLE`, and `sub` flows into
+// `request.jwt.claims` so Postgres `auth.uid()` resolves the signed-in employee
+// — making RLS the real authorization boundary (see the auth plan, token chain).
 //
-// SECURITY (POPIA): the signing secret (PULSE_PG_JWT_SECRET — the SAME secret
-// PostgREST validates against) must NEVER reach the browser. This module is
-// imported only from server code (Auth.js callbacks, server actions, route
-// handlers). The minted token carries `role: authenticated` + a `sub` (the
-// employee's auth_user_id); PostgREST does `SET ROLE authenticated` and exposes
-// the sub as `request.jwt.claims->>'sub'`, which our RLS reads via auth.uid().
-import 'server-only'
+// SECURITY (POPIA): the signing secret is the SAME secret PostgREST verifies
+// with (~/pulse-db/.jwt_secret on the box). It must NEVER reach the browser —
+// only the minted token does. Call this from server code only.
+
 import { SignJWT } from 'jose'
 
-function secretKey(): Uint8Array {
-  const secret = process.env.PULSE_PG_JWT_SECRET
-  if (!secret) throw new Error('PULSE_PG_JWT_SECRET is not set')
-  return new TextEncoder().encode(secret)
+/** The DB role PostgREST switches into for an authenticated request. */
+export const POSTGREST_AUTHENTICATED_ROLE = 'authenticated'
+
+/** Default token lifetime: 1 hour. */
+export const DEFAULT_TTL_SECONDS = 60 * 60
+
+export interface MintPulseTokenOptions {
+  /**
+   * The employee's `auth_user_id` (the Entra `oid` after first-login relink).
+   * Becomes the JWT `sub`, which `auth.uid()` reads.
+   */
+  authUserId: string
+  /** The shared HS256 secret PostgREST verifies with. Server env only. */
+  secret: string
+  /** Token lifetime in seconds. Defaults to {@link DEFAULT_TTL_SECONDS}. */
+  ttlSeconds?: number
+  /** Epoch-seconds override for `iat`/`exp`. Defaults to the current time. */
+  nowSeconds?: number
 }
 
 /**
- * Mint an `authenticated`-role PostgREST JWT for `sub`, valid for `ttlSeconds`.
- * Keep TTLs short — these are bearer tokens for the data API.
+ * Mint a short-lived PostgREST access token for the given employee.
+ * Returns a signed compact JWT string.
  */
-export async function mintAuthenticatedToken(
-  sub: string,
-  ttlSeconds = 3600,
-): Promise<string> {
-  const now = Math.floor(Date.now() / 1000)
-  return new SignJWT({ role: 'authenticated' })
+export async function mintPulseToken(options: MintPulseTokenOptions): Promise<string> {
+  const { authUserId, secret, ttlSeconds = DEFAULT_TTL_SECONDS } = options
+  if (!authUserId) throw new Error('mintPulseToken: authUserId is required')
+  if (!secret) throw new Error('mintPulseToken: secret is required')
+
+  const iat = options.nowSeconds ?? Math.floor(Date.now() / 1000)
+  const key = new TextEncoder().encode(secret)
+
+  return new SignJWT({ role: POSTGREST_AUTHENTICATED_ROLE })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-    .setSubject(sub)
-    .setIssuedAt(now)
-    .setExpirationTime(now + ttlSeconds)
-    .sign(secretKey())
+    .setSubject(authUserId)
+    .setIssuedAt(iat)
+    .setExpirationTime(iat + ttlSeconds)
+    .sign(key)
 }

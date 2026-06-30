@@ -1,38 +1,21 @@
-// Edge-safe Auth.js config. Contains ONLY what middleware needs (providers +
-// the `authorized` gate). No database access here — the DB-touching callbacks
-// (signIn/jwt/session) live in `auth.ts`, which runs in the Node runtime.
-//
-// Env (auto-read by Auth.js): AUTH_MICROSOFT_ENTRA_ID_{ID,SECRET,ISSUER},
-// AUTH_SECRET, AUTH_URL, AUTH_TRUST_HOST.
+// ── Edge-safe Auth.js config (middleware only) ───────────────────────────────
+// Used by middleware.ts to gate routes. Intentionally minimal: no providers,
+// no jose minting, no PostgREST calls — those live in auth.ts (Node runtime).
+// This only decrypts the session cookie and decides public-vs-protected.
+
 import type { NextAuthConfig } from 'next-auth'
-import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id'
 
 export const authConfig = {
-  trustHost: true,
-  providers: [
-    MicrosoftEntraID({
-      clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
-      clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
-      issuer: process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER,
-      authorization: { params: { scope: 'openid profile email User.Read' } },
-    }),
-  ],
-  pages: { signIn: '/login' },
+  pages: { signIn: '/login', error: '/login' },
+  providers: [],
   callbacks: {
-    // Runs in middleware on every matched request. Protects the whole app and
-    // bounces an already-signed-in user away from /login.
-    authorized({ auth, request }) {
-      const loggedIn = !!auth?.user
-      const { pathname } = request.nextUrl
-      if (pathname.startsWith('/login')) {
-        if (loggedIn) {
-          return Response.redirect(new URL('/dashboard', request.nextUrl))
-        }
-        return true
-      }
-      return loggedIn
+    authorized({ auth, request: { nextUrl } }) {
+      const isLoggedIn = Boolean(auth?.user)
+      const path = nextUrl.pathname
+      // Public surfaces: the login page and the Auth.js endpoints.
+      if (path === '/login' || path.startsWith('/api/auth')) return true
+      // Everything else requires a real session (redirects to /login).
+      return isLoggedIn
     },
   },
 } satisfies NextAuthConfig
-
-export default authConfig

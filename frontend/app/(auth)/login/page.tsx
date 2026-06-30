@@ -1,69 +1,48 @@
-import { redirect } from 'next/navigation'
-
-import { auth, signIn } from '@/auth'
-import { Button } from '@/components/ui'
 import { AuthCard } from '../_components/AuthCard'
+import { signIn } from '@/auth'
 
-// Real sign-in: Microsoft (Entra ID) only. MFA and password policy are owned by
-// Microsoft 365, so there is no password field here. Access is gated in the
-// Auth.js signIn callback to Jera staff who own a Pulse employee record.
-export default async function LoginPage({
-  searchParams,
-}: {
-  searchParams: { error?: string }
-}) {
-  const session = await auth()
-  if (session?.user) redirect('/dashboard')
-
-  const deniedAccess = searchParams?.error === 'AccessDenied'
-  const otherError = Boolean(searchParams?.error) && !deniedAccess
+// Login screen. Real Microsoft 365 sign-in via Auth.js (Entra ID). Entra owns
+// the password + MFA; we only resolve the signed-in user to a Pulse employee
+// (server-side) and deny anyone without a matching record.
+export default function LoginPage() {
+  async function signInWithMicrosoft() {
+    'use server'
+    await signIn('microsoft-entra-id', { redirectTo: '/welcome' })
+  }
 
   return (
-    <AuthCard
-      glyph="P"
-      title="Welcome to PULSE"
-      subtitle="Sign in with your Jera Microsoft account"
-    >
-      <div className="flex flex-col gap-4">
-        {deniedAccess ? (
-          <div
-            role="alert"
-            className="rounded-btn border border-[#DB443730] bg-[#DB443710] px-[14px] py-[10px] text-[13px] text-[#DB4437]"
-          >
-            That Microsoft account isn&apos;t registered in Pulse yet. Please
-            contact HR to be added.
-          </div>
-        ) : null}
-        {otherError ? (
-          <div
-            role="alert"
-            className="rounded-btn border border-[#DB443730] bg-[#DB443710] px-[14px] py-[10px] text-[13px] text-[#DB4437]"
-          >
-            Sign-in didn&apos;t complete. Please try again.
-          </div>
-        ) : null}
-
-        <form
-          action={async () => {
-            'use server'
-            await signIn('microsoft-entra-id', { redirectTo: '/dashboard' })
-          }}
+    <AuthCard glyph="P" title="Welcome to PULSE" subtitle="Sign in with your Jera account">
+      <form action={signInWithMicrosoft} className="flex flex-col gap-4">
+        <button
+          type="submit"
+          className="flex w-full items-center justify-center gap-3 rounded-btn bg-jera-red px-4 py-3 text-[14px] font-semibold text-white shadow-red-glow transition-colors hover:bg-[#7a1029]"
         >
-          <Button
-            type="submit"
-            variant="primary"
-            fullWidth
-            rightIcon={<span aria-hidden>→</span>}
-          >
-            Sign in with Microsoft
-          </Button>
-        </form>
+          <MicrosoftLogo />
+          Sign in with Microsoft
+        </button>
+      </form>
 
-        <p className="text-center text-xs leading-relaxed text-text-muted">
-          Use your <strong>@jera.co.za</strong> Microsoft account. Access is
-          limited to current Jera staff.
-        </p>
+      <div className="my-1 flex items-center gap-3">
+        <span className="h-px flex-1 bg-surface-border" />
+        <span className="text-[11px] font-semibold tracking-[1px] text-text-muted">JERA STAFF</span>
+        <span className="h-px flex-1 bg-surface-border" />
       </div>
+      <p className="text-center text-xs leading-relaxed text-text-muted">
+        Use your <strong>@jera.co.za</strong> Microsoft 365 account. Access is limited to
+        registered Jera employees.
+      </p>
     </AuthCard>
+  )
+}
+
+// Microsoft four-square logo mark.
+function MicrosoftLogo() {
+  return (
+    <span aria-hidden className="grid h-[18px] w-[18px] grid-cols-2 gap-[2px]">
+      <span className="bg-[#F25022]" />
+      <span className="bg-[#7FBA00]" />
+      <span className="bg-[#00A4EF]" />
+      <span className="bg-[#FFB900]" />
+    </span>
   )
 }
