@@ -35,6 +35,13 @@ export const WRITE_ALLOWLIST: Record<string, ReadonlyArray<string>> = {
   // Policy acknowledgements: a user upserts their own ack (insert/update); a DB
   // trigger recomputes policies_completed. RLS scopes to the signed-in employee.
   hr_policy_acknowledgements: ['POST', 'PATCH'],
+  // WS-6 Documents: admin adds document metadata (POST) and replaces or
+  // soft-deletes via PATCH (is_active=false — never a hard DELETE, so DELETE is
+  // deliberately absent). RLS `doc_admin` restricts all writes to admins.
+  documents: ['POST', 'PATCH'],
+  // WS-6 Documents: acknowledgement upsert (POST with on_conflict merge). RLS
+  // `docack_self` scopes writes to the signed-in employee (or admin).
+  document_acknowledgements: ['POST'],
 }
 
 /** True when `method` is an allowed write for `table`. */
