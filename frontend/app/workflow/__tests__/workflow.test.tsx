@@ -1,5 +1,13 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
+
+// The board's data controller (useWorkflow) statically imports the WS-2 server
+// actions, whose module graph reaches @/auth (NextAuth) — not loadable under
+// jsdom. Mock mode never calls them, so stub the module out for unit tests.
+vi.mock('@/app/workflow/actions', () => ({
+  updateTaskStatus: vi.fn(async () => ({ ok: true })),
+  assignTaskOwner: vi.fn(async () => ({ ok: true })),
+}))
 
 import { ToastProvider } from '@/components/ui'
 import {

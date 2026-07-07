@@ -11,14 +11,15 @@
 //
 // Approver: a "Pending Approvals" tab listing submitted claims with expandable
 // line items and Approve / Return-for-correction actions. Managers can approve
-// (capability `approveExpenses`).
+// (capability `approveExpenses`); marking a claim PAID is admin-only.
 //
-// Mock phase: there are no per-claim line mutators yet, so the submitted form
-// and approval state live in component state. Reads (seed claims, lines, and the
-// AA certificate) come from the accessor layer; the AA cert editor persists via
-// the saveAaRateCertificate mutator.
+// Data layer (WS-4): lib/data/useExpenses — live mode persists claims + lines
+// through the /api/rest proxy (RLS + the expense statechart triggers are the
+// boundary); mock mode preserves the original in-memory behaviour. Attachments
+// (timesheet / slips / receipts) are recorded by file name only until the
+// SharePoint integration lands (WS-10/B5) — the pending-storage state.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -34,14 +35,14 @@ import {
 } from '@/components/ui'
 import { useSession } from '@/lib/mock/session'
 import {
-  getAaRateCertificate,
-  getEmployee,
-  listExpenseAdvanceLines,
-  listExpenseClaims,
-  listExpenseOtherLines,
-  listExpenseTravelLines,
-  saveAaRateCertificate,
-} from '@/lib/mock'
+  useExpenseApprovals,
+  useMyExpenseClaim,
+  type AdvanceRow,
+  type ApprovalClaim,
+  type MyClaimController,
+  type OtherRow,
+  type TravelRow,
+} from '@/lib/data/useExpenses'
 import { can } from '@/lib/capabilities'
 import { EXPENSE_DEADLINE_DAY } from '@/lib/constants'
 import {
@@ -51,39 +52,7 @@ import {
   travelRateForLine,
   type AaRates,
 } from '@/lib/expenseCalc'
-import type {
-  AaRateCertificate,
-  ExpenseClaim,
-  ExpenseStatus,
-} from '@/types/database'
-
-// ── Local form row models (pre-submit, string-backed like real inputs) ────────
-interface OtherRow {
-  id: string
-  clientName: string
-  date: string
-  description: string
-  amount: string
-  receiptName: string | null
-}
-
-interface TravelRow {
-  id: string
-  clientName: string
-  date: string
-  reason: string
-  invoiced: boolean
-  invoiceNo: string
-  invoiceAmount: string
-  km: string
-}
-
-interface AdvanceRow {
-  id: string
-  date: string
-  details: string
-  amount: string
-}
+import type { AaRateCertificate, ExpenseStatus } from '@/types/database'
 
 let rowSeq = 0
 const nextId = (prefix: string) => `${prefix}-${++rowSeq}`
@@ -130,6 +99,17 @@ const FIELD_LABEL =
 // still produces sensible numbers (mirrors the prototype DEFAULT_VEHICLE).
 const FALLBACK_RATES: AaRates = { full_rate: 6.05, fixed_cost: 4.59 }
 
+// Generic write-failure body (MSG-ERR-GENERIC); DB trigger raise text replaces
+// it when the server said something specific (MSG-DENY-TRIGGER).
+const GENERIC_SAVE_ERROR =
+  'Something went wrong — your changes were not saved. Try again.'
+
+function saveErrorMessage(e: unknown): string {
+  return e instanceof Error && e.message.trim() !== ''
+    ? e.message
+    : GENERIC_SAVE_ERROR
+}
+
 // ── AA Rate Certificate card + editor ─────────────────────────────────────────
 interface AaEditorDraft {
   make: string
@@ -143,16 +123,15 @@ interface AaEditorDraft {
 }
 
 function AaCertSection({
-  employeeId,
   cert,
-  onSaved,
+  onSave,
 }: {
-  employeeId: string
   cert: AaRateCertificate | null
-  onSaved: (cert: AaRateCertificate) => void
+  onSave: MyClaimController['saveCert']
 }) {
   const { toast } = useToast()
   const [editorOpen, setEditorOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [draft, setDraft] = useState<AaEditorDraft | null>(null)
 
   function openEditor() {
@@ -173,33 +152,43 @@ function AaCertSection({
     setDraft((d) => (d ? { ...d, ...patch } : d))
   }
 
-  function save() {
-    if (!draft) return
+  async function save() {
+    if (!draft || saving) return
     const num = (v: string, fb: number) => {
       const n = parseFloat(v)
       return Number.isFinite(n) && n > 0 ? n : fb
     }
-    const saved = saveAaRateCertificate(employeeId, {
-      make: draft.make.trim() || cert?.make || '',
-      model: draft.model.trim() || cert?.model || '',
-      year: draft.year.trim() || cert?.year || '',
-      registration: draft.registration.trim() || null,
-      full_rate: num(draft.fullRate, cert?.full_rate ?? 0),
-      fixed_cost: num(draft.fixedCost, cert?.fixed_cost ?? 0),
-      running_cost: num(draft.runningCost, cert?.running_cost ?? 0),
-      fuel_price: num(draft.fuelPrice, cert?.fuel_price ?? 0),
-      file_name: cert?.file_name ?? 'AA_Rate_Certificate.pdf',
-      issued_date: cert?.issued_date ?? new Date().toISOString().slice(0, 10),
-    })
-    onSaved(saved)
-    setEditorOpen(false)
-    toast({
-      variant: 'success',
-      title: 'AA certificate saved',
-      message: `${saved.make} ${saved.model} — full ${formatRand(
-        saved.full_rate,
-      )}/km, fixed ${formatRand(saved.fixed_cost)}/km.`,
-    })
+    setSaving(true)
+    try {
+      const saved = await onSave({
+        make: draft.make.trim() || cert?.make || '',
+        model: draft.model.trim() || cert?.model || '',
+        year: draft.year.trim() || cert?.year || '',
+        registration: draft.registration.trim() || null,
+        full_rate: num(draft.fullRate, cert?.full_rate ?? 0),
+        fixed_cost: num(draft.fixedCost, cert?.fixed_cost ?? 0),
+        running_cost: num(draft.runningCost, cert?.running_cost ?? 0),
+        fuel_price: num(draft.fuelPrice, cert?.fuel_price ?? 0),
+        file_name: cert?.file_name ?? 'AA_Rate_Certificate.pdf',
+        issued_date: cert?.issued_date ?? new Date().toISOString().slice(0, 10),
+      })
+      setEditorOpen(false)
+      toast({
+        variant: 'success',
+        title: 'AA certificate saved',
+        message: `${saved.make} ${saved.model} — full ${formatRand(
+          saved.full_rate,
+        )}/km, fixed ${formatRand(saved.fixed_cost)}/km.`,
+      })
+    } catch (e) {
+      toast({
+        variant: 'error',
+        title: "Couldn't save",
+        message: saveErrorMessage(e),
+      })
+    } finally {
+      setSaving(false)
+    }
   }
 
   const buttonLabel = cert?.uploaded ? 'Update AA certificate' : 'Upload AA certificate'
@@ -258,7 +247,9 @@ function AaCertSection({
             <Button variant="secondary" onClick={() => setEditorOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={save}>Save certificate</Button>
+            <Button onClick={() => void save()} isLoading={saving}>
+              Save certificate
+            </Button>
           </>
         }
       >
@@ -365,9 +356,8 @@ function ClaimForm() {
   const { toast } = useToast()
 
   const employeeId = currentEmployee?.id ?? ''
-  const [cert, setCert] = useState<AaRateCertificate | null>(() =>
-    employeeId ? getAaRateCertificate(employeeId) : null,
-  )
+  const controller = useMyExpenseClaim(employeeId)
+  const { cert } = controller
   const rates: AaRates = cert
     ? { full_rate: cert.full_rate, fixed_cost: cert.fixed_cost }
     : FALLBACK_RATES
@@ -380,6 +370,22 @@ function ClaimForm() {
   const [slipNames, setSlipNames] = useState<string[]>([])
   const [submitted, setSubmitted] = useState(false)
   const [showErrors, setShowErrors] = useState(false)
+  const [saving, setSaving] = useState<'draft' | 'submit' | null>(null)
+  const [startedNew, setStartedNew] = useState(false)
+
+  // Hydrate the form from the persisted draft/returned claim (once per claim).
+  const hydratedClaimRef = useRef<string | null>(null)
+  useEffect(() => {
+    const claim = controller.activeClaim
+    const rows = controller.activeRows
+    if (!claim || !rows || hydratedClaimRef.current === claim.id) return
+    hydratedClaimRef.current = claim.id
+    if (rows.other.length > 0) setOtherRows(rows.other)
+    if (rows.travel.length > 0) setTravelRows(rows.travel)
+    if (rows.advances.length > 0) setAdvanceRows(rows.advances)
+    setPeriod(claim.claim_period ?? '')
+    setTimesheetName(claim.timesheet_filename)
+  }, [controller.activeClaim, controller.activeRows])
 
   const totals = useMemo(
     () =>
@@ -416,6 +422,12 @@ function ClaimForm() {
     (r) => Number(r.km) > 0 && travelRateForLine(r.invoiced, rates) <= 0,
   )
 
+  const incomplete =
+    otherMissingClient ||
+    travelMissingClient ||
+    travelMissingInvoiceNo ||
+    advanceMissingDetails
+
   function updateOther(id: string, patch: Partial<OtherRow>) {
     setOtherRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   }
@@ -426,13 +438,43 @@ function ClaimForm() {
     setAdvanceRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   }
 
-  function handleSubmit() {
-    if (
-      otherMissingClient ||
-      travelMissingClient ||
-      travelMissingInvoiceNo ||
-      advanceMissingDetails
-    ) {
+  const formRows = { travel: travelRows, other: otherRows, advances: advanceRows }
+  const formMeta = { period, timesheetName }
+
+  async function handleSaveDraft() {
+    // Draft saves apply the completeness gate only (attachments can come later)
+    // — persisted lines must satisfy the DB's own line CHECK constraints.
+    if (incomplete) {
+      setShowErrors(true)
+      toast({
+        variant: 'error',
+        title: 'Claim incomplete',
+        message:
+          'Complete every line with a value — client/details, and an invoice number on invoiced travel.',
+      })
+      return
+    }
+    setSaving('draft')
+    try {
+      await controller.saveDraft(formRows, formMeta)
+      toast({
+        variant: 'success',
+        title: 'Draft saved',
+        message: 'Your claim was saved — submit it when it is complete.',
+      })
+    } catch (e) {
+      toast({
+        variant: 'error',
+        title: "Couldn't save",
+        message: saveErrorMessage(e),
+      })
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  async function handleSubmit() {
+    if (incomplete) {
       setShowErrors(true)
       toast({
         variant: 'error',
@@ -473,16 +515,93 @@ function ClaimForm() {
       })
       return
     }
-    setSubmitted(true)
-    toast({
-      variant: 'success',
-      title: 'Expense claim submitted',
-      message: `Grand total ${formatRand(totals.grandTotal)} sent to finance for approval.`,
-    })
+    setSaving('submit')
+    try {
+      await controller.submit(formRows, formMeta)
+      setSubmitted(true)
+      toast({
+        variant: 'success',
+        title: 'Expense claim submitted',
+        message: `Grand total ${formatRand(totals.grandTotal)} sent to finance for approval.`,
+      })
+    } catch (e) {
+      // Write failed: the claim stays draft — nothing was submitted.
+      toast({
+        variant: 'error',
+        title: "Couldn't save",
+        message: saveErrorMessage(e),
+      })
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  if (controller.loading) {
+    return (
+      <div className="mx-auto max-w-[820px]">
+        <Card>
+          <p className="text-[13px] text-text-muted">Loading your expense claim…</p>
+        </Card>
+      </div>
+    )
+  }
+
+  if (controller.error) {
+    return (
+      <div className="mx-auto max-w-[820px]">
+        <Card>
+          <p className="mb-3 text-[13px] text-jera-red">
+            Could not load your expense claim ({controller.error}).
+          </p>
+          <Button variant="secondary" size="sm" onClick={controller.reload}>
+            Try again
+          </Button>
+        </Card>
+      </div>
+    )
+  }
+
+  // A claim already awaiting review: show the submitted view (the approver
+  // decides from here; a new claim can be started for the next period).
+  if (!submitted && !startedNew && controller.submittedClaim) {
+    const c = controller.submittedClaim
+    return (
+      <div className="mx-auto max-w-[820px] space-y-4">
+        <Card>
+          <div className="flex flex-col items-center gap-3 py-4 text-center">
+            <Badge color="amber">Submitted</Badge>
+            <p className="text-[13px] font-semibold text-text">
+              Claim {c.claim_period ? `for ${c.claim_period} ` : ''}submitted —
+              awaiting finance approval.
+            </p>
+            <p className="font-display text-2xl font-extrabold text-jera-red">
+              {formatRand(c.grand_total)}
+            </p>
+            <Button variant="secondary" size="sm" onClick={() => setStartedNew(true)}>
+              Start a new claim
+            </Button>
+          </div>
+        </Card>
+      </div>
+    )
   }
 
   return (
     <div className="mx-auto max-w-[820px] space-y-4">
+      {/* Returned claim: back for correction with the reviewer's notes (E4). */}
+      {controller.activeClaim?.status === 'returned' ? (
+        <div
+          className="rounded-card border border-jera-red/40 border-l-[3px] border-l-jera-red bg-jera-red-light p-4"
+          role="note"
+        >
+          <p className="text-[13px] leading-relaxed text-jera-red">
+            <strong>Returned for correction:</strong>{' '}
+            {controller.activeClaim.review_notes ??
+              'Your claim was sent back — correct it and resubmit.'}
+          </p>
+        </div>
+      ) : null}
+
       {/* Policy banner — D2: non-invoiced travel IS claimable, at the fixed cost. */}
       <div
         className="rounded-card border border-jera-red/40 border-l-[3px] border-l-jera-red bg-jera-red-light p-4"
@@ -579,7 +698,7 @@ function ClaimForm() {
                   <label className={`${FIELD_LABEL} sm:hidden`}>Receipt</label>
                   <label
                     className="inline-flex cursor-pointer items-center justify-center gap-[6px] rounded-btn border border-surface-border bg-surface px-3 py-[11px] text-xs font-semibold text-text-secondary transition-colors hover:bg-surface-border-light"
-                    title="Attach receipt (mock)"
+                    title="Attach receipt — file name recorded; storage arrives with SharePoint"
                   >
                     {row.receiptName ? '✓ Attached' : '📎 Receipt'}
                     <input
@@ -856,11 +975,7 @@ function ClaimForm() {
       </Card>
 
       {/* AA certificate card + editor */}
-      <AaCertSection
-        employeeId={employeeId}
-        cert={cert}
-        onSaved={(c) => setCert(c)}
-      />
+      <AaCertSection cert={cert} onSave={controller.saveCert} />
 
       {/* Totals + timesheet + submit */}
       <Card>
@@ -882,7 +997,9 @@ function ClaimForm() {
         </div>
 
         {/* Attachments — timesheet (always required) + receipt slips (required
-            when there are incurred expenses). Submit is blocked until present. */}
+            when there are incurred expenses). Submit is blocked until present.
+            File names are recorded now; the binary upload lands with SharePoint
+            (WS-10/B5) — the pending-storage state. */}
         <div className="mb-3 flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
             <label
@@ -891,7 +1008,7 @@ function ClaimForm() {
                   ? 'border-jera-green/40 bg-jera-green/10 text-jera-green'
                   : 'border-dashed border-surface-border bg-surface text-text-secondary hover:bg-surface-border-light'
               }`}
-              title="Attach timesheet (mock)"
+              title="Attach timesheet — file name recorded; storage arrives with SharePoint"
             >
               {timesheetName ? '✓ Timesheet attached' : '📎 Attach timesheet'}
               <input
@@ -911,7 +1028,7 @@ function ClaimForm() {
                   ? 'border-jera-green/40 bg-jera-green/10 text-jera-green'
                   : 'border-dashed border-surface-border bg-surface text-text-secondary hover:bg-surface-border-light'
               }`}
-              title="Attach receipt slips (mock)"
+              title="Attach receipt slips — file names recorded; storage arrives with SharePoint"
             >
               {slipNames.length > 0
                 ? `✓ ${slipNames.length} slip${slipNames.length === 1 ? '' : 's'} attached`
@@ -965,9 +1082,27 @@ function ClaimForm() {
             Claim submitted — awaiting finance approval.
           </div>
         ) : (
-          <Button fullWidth onClick={handleSubmit}>
-            Submit Claim to Finance
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button
+              fullWidth
+              onClick={() => void handleSubmit()}
+              isLoading={saving === 'submit'}
+              disabled={saving === 'draft'}
+            >
+              Submit Claim to Finance
+            </Button>
+            {controller.live ? (
+              <Button
+                fullWidth
+                variant="secondary"
+                onClick={() => void handleSaveDraft()}
+                isLoading={saving === 'draft'}
+                disabled={saving === 'submit'}
+              >
+                Save draft
+              </Button>
+            ) : null}
+          </div>
         )}
         <p className="mt-3 text-[11.5px] text-text-muted">
           Submit by the {EXPENSE_DEADLINE_DAY}th of the month.
@@ -987,55 +1122,79 @@ function TotalLine({ label, value }: { label: string; value: string }) {
 }
 
 // ── Approver: pending approvals ───────────────────────────────────────────────
-interface ApproverClaimRow extends ExpenseClaim {
-  submitterName: string
-  localStatus: ExpenseStatus
-  localNotes: string | null
-}
-
 function PendingApprovals() {
+  const { currentEmployee, role } = useSession()
   const { toast } = useToast()
 
-  const [claims, setClaims] = useState<ApproverClaimRow[]>(() =>
-    listExpenseClaims().map((c) => ({
-      ...c,
-      submitterName: getEmployee(c.employee_id)?.display_name ?? c.employee_id,
-      localStatus: c.status,
-      localNotes: c.review_notes,
-    })),
-  )
+  const meId = currentEmployee?.id ?? ''
+  const isAdmin = role === 'admin'
+  const controller = useExpenseApprovals(meId)
+
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [notesById, setNotesById] = useState<Record<string, string>>({})
+  const [pendingAction, setPendingAction] = useState<{
+    claimId: string
+    action: 'approved' | 'returned' | 'paid'
+  } | null>(null)
 
-  const pending = claims.filter((c) => c.localStatus === 'submitted')
-  const reviewed = claims.filter((c) => c.localStatus !== 'submitted')
-
-  function review(claimId: string, decision: 'approved' | 'returned') {
-    const notes = notesById[claimId]?.trim() || null
-    setClaims((prev) =>
-      prev.map((c) =>
-        c.id === claimId ? { ...c, localStatus: decision, localNotes: notes } : c,
-      ),
-    )
-    const claim = claims.find((c) => c.id === claimId)
-    toast({
-      variant: decision === 'approved' ? 'success' : 'error',
-      title: decision === 'approved' ? 'Claim approved' : 'Claim returned',
-      message:
-        decision === 'approved'
-          ? `${claim?.submitterName ?? 'Claim'} — ${formatRand(
-              claim?.grand_total ?? 0,
-            )}. Submitter notified.`
-          : `${claim?.submitterName ?? 'Claim'}'s claim was sent back for correction.`,
-    })
+  async function review(claim: ApprovalClaim, decision: 'approved' | 'returned') {
+    const notes = notesById[claim.id]?.trim() || null
+    setPendingAction({ claimId: claim.id, action: decision })
+    try {
+      await controller.review(claim.id, decision, notes)
+      toast({
+        variant: decision === 'approved' ? 'success' : 'error',
+        title: decision === 'approved' ? 'Claim approved' : 'Claim returned',
+        message:
+          decision === 'approved'
+            ? `${claim.submitterName} — ${formatRand(claim.grand_total)}. Submitter notified.`
+            : `${claim.submitterName}'s claim was sent back for correction.`,
+      })
+    } catch (e) {
+      toast({
+        variant: 'error',
+        title: "Couldn't save",
+        message: saveErrorMessage(e),
+      })
+    } finally {
+      setPendingAction(null)
+    }
   }
 
-  function renderClaimCard(claim: ApproverClaimRow, actionable: boolean) {
-    const travel = listExpenseTravelLines(claim.id)
-    const other = listExpenseOtherLines(claim.id)
-    const advances = listExpenseAdvanceLines(claim.id)
+  async function markPaid(claim: ApprovalClaim) {
+    setPendingAction({ claimId: claim.id, action: 'paid' })
+    try {
+      // Terminal transition (E5): the badge flips to Paid — no toast by design.
+      await controller.markPaid(claim.id)
+    } catch (e) {
+      toast({
+        variant: 'error',
+        title: "Couldn't save",
+        message: saveErrorMessage(e),
+      })
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
+  function toggleExpand(claimId: string) {
+    const next = expandedId === claimId ? null : claimId
+    setExpandedId(next)
+    if (next) {
+      controller.loadLines(next).catch(() => {
+        // Line fetch failed — the card shows its loading text; retry on re-open.
+      })
+    }
+  }
+
+  function renderClaimCard(claim: ApprovalClaim) {
+    // A submitter never reviews their own claim (self-approve is blocked by the
+    // DB trigger; the controls are hidden here — REJ-UI-HIDDEN).
+    const actionable = claim.status === 'submitted' && claim.employee_id !== meId
+    const lines = controller.linesFor(claim.id)
     const isOpen = expandedId === claim.id
-    const badge = STATUS_BADGE[claim.localStatus]
+    const badge = STATUS_BADGE[claim.status]
+    const busy = pendingAction?.claimId === claim.id ? pendingAction.action : null
     return (
       <Card key={claim.id} className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1061,7 +1220,7 @@ function PendingApprovals() {
               variant="ghost"
               size="sm"
               aria-expanded={isOpen}
-              onClick={() => setExpandedId(isOpen ? null : claim.id)}
+              onClick={() => toggleExpand(claim.id)}
             >
               {isOpen ? 'Hide lines' : 'View lines'}
             </Button>
@@ -1070,77 +1229,83 @@ function PendingApprovals() {
 
         {isOpen ? (
           <div className="space-y-3 border-t border-surface-border pt-3">
-            {other.length > 0 ? (
-              <div>
-                <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.5px] text-text-muted">
-                  Expenses Incurred
-                </div>
-                <ul className="space-y-1">
-                  {other.map((l) => (
-                    <li
-                      key={l.id}
-                      className="flex justify-between gap-3 text-[13px] text-text"
-                    >
-                      <span className="min-w-0 truncate">
-                        {l.client_name}
-                        {l.description ? ` · ${l.description}` : ''}
-                      </span>
-                      <span className="font-semibold">{formatRand(l.amount ?? 0)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {travel.length > 0 ? (
-              <div>
-                <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.5px] text-text-muted">
-                  Travel
-                </div>
-                <ul className="space-y-1">
-                  {travel.map((l) => (
-                    <li
-                      key={l.id}
-                      className="flex items-center justify-between gap-3 text-[13px] text-text"
-                    >
-                      <span className="flex min-w-0 items-center gap-2 truncate">
-                        <Badge color={l.invoiced ? 'blue' : 'grey'}>
-                          {l.invoiced ? 'Full AA' : 'Fixed'}
-                        </Badge>
-                        <span className="min-w-0 truncate">
-                          {l.client_name}
-                          {l.travel_date ? ` · ${l.travel_date}` : ''}
-                          {l.km_traveled != null ? ` · ${l.km_traveled} km` : ''}
-                        </span>
-                      </span>
-                      <span className="font-semibold">{formatRand(l.amount ?? 0)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {advances.length > 0 ? (
-              <div>
-                <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.5px] text-text-muted">
-                  Advances (Deducted)
-                </div>
-                <ul className="space-y-1">
-                  {advances.map((l) => (
-                    <li
-                      key={l.id}
-                      className="flex justify-between gap-3 text-[13px] text-text"
-                    >
-                      <span className="min-w-0 truncate">
-                        {l.details}
-                        {l.advance_date ? ` · ${l.advance_date}` : ''}
-                      </span>
-                      <span className="font-semibold">
-                        − {formatRand(l.amount ?? 0)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
+            {lines === null ? (
+              <p className="text-[12.5px] text-text-muted">Loading line items…</p>
+            ) : (
+              <>
+                {lines.other.length > 0 ? (
+                  <div>
+                    <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.5px] text-text-muted">
+                      Expenses Incurred
+                    </div>
+                    <ul className="space-y-1">
+                      {lines.other.map((l) => (
+                        <li
+                          key={l.id}
+                          className="flex justify-between gap-3 text-[13px] text-text"
+                        >
+                          <span className="min-w-0 truncate">
+                            {l.client_name}
+                            {l.description ? ` · ${l.description}` : ''}
+                          </span>
+                          <span className="font-semibold">{formatRand(l.amount ?? 0)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {lines.travel.length > 0 ? (
+                  <div>
+                    <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.5px] text-text-muted">
+                      Travel
+                    </div>
+                    <ul className="space-y-1">
+                      {lines.travel.map((l) => (
+                        <li
+                          key={l.id}
+                          className="flex items-center justify-between gap-3 text-[13px] text-text"
+                        >
+                          <span className="flex min-w-0 items-center gap-2 truncate">
+                            <Badge color={l.invoiced ? 'blue' : 'grey'}>
+                              {l.invoiced ? 'Full AA' : 'Fixed'}
+                            </Badge>
+                            <span className="min-w-0 truncate">
+                              {l.client_name}
+                              {l.travel_date ? ` · ${l.travel_date}` : ''}
+                              {l.km_traveled != null ? ` · ${l.km_traveled} km` : ''}
+                            </span>
+                          </span>
+                          <span className="font-semibold">{formatRand(l.amount ?? 0)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {lines.advances.length > 0 ? (
+                  <div>
+                    <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.5px] text-text-muted">
+                      Advances (Deducted)
+                    </div>
+                    <ul className="space-y-1">
+                      {lines.advances.map((l) => (
+                        <li
+                          key={l.id}
+                          className="flex justify-between gap-3 text-[13px] text-text"
+                        >
+                          <span className="min-w-0 truncate">
+                            {l.details}
+                            {l.advance_date ? ` · ${l.advance_date}` : ''}
+                          </span>
+                          <span className="font-semibold">
+                            − {formatRand(l.amount ?? 0)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </>
+            )}
             <div className="text-[11.5px] text-text-muted">
               📎 Timesheet: {claim.timesheet_filename ?? 'not attached'}
             </div>
@@ -1158,20 +1323,66 @@ function PendingApprovals() {
               }
             />
             <div className="flex gap-2">
-              <Button onClick={() => review(claim.id, 'approved')}>Approve</Button>
+              <Button
+                onClick={() => void review(claim, 'approved')}
+                isLoading={busy === 'approved'}
+                disabled={busy !== null && busy !== 'approved'}
+              >
+                Approve
+              </Button>
               <Button
                 variant="secondary"
-                onClick={() => review(claim.id, 'returned')}
+                onClick={() => void review(claim, 'returned')}
+                isLoading={busy === 'returned'}
+                disabled={busy !== null && busy !== 'returned'}
               >
                 Return for correction
               </Button>
             </div>
           </div>
-        ) : claim.localNotes ? (
-          <p className="border-t border-surface-border pt-3 text-xs text-text-muted">
-            <strong className="text-text-secondary">Notes:</strong> {claim.localNotes}
-          </p>
-        ) : null}
+        ) : (
+          <>
+            {claim.review_notes ? (
+              <p className="border-t border-surface-border pt-3 text-xs text-text-muted">
+                <strong className="text-text-secondary">Notes:</strong>{' '}
+                {claim.review_notes}
+              </p>
+            ) : null}
+            {/* Mark paid is ADMIN-ONLY (managers approve but never pay — E5). */}
+            {isAdmin && claim.status === 'approved' ? (
+              <div className="border-t border-surface-border pt-3">
+                <Button
+                  size="sm"
+                  onClick={() => void markPaid(claim)}
+                  isLoading={busy === 'paid'}
+                >
+                  Mark paid
+                </Button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </Card>
+    )
+  }
+
+  if (controller.loading) {
+    return (
+      <Card>
+        <p className="text-[13px] text-text-muted">Loading expense claims…</p>
+      </Card>
+    )
+  }
+
+  if (controller.error) {
+    return (
+      <Card>
+        <p className="mb-3 text-[13px] text-jera-red">
+          Could not load expense claims ({controller.error}).
+        </p>
+        <Button variant="secondary" size="sm" onClick={controller.reload}>
+          Try again
+        </Button>
       </Card>
     )
   }
@@ -1180,26 +1391,28 @@ function PendingApprovals() {
     <div className="space-y-4">
       <div>
         <h2 className="mb-3 font-display text-sm font-bold text-text">
-          Awaiting your review ({pending.length})
+          Awaiting your review ({controller.pending.length})
         </h2>
-        {pending.length === 0 ? (
+        {controller.pending.length === 0 ? (
           <Card>
             <p className="text-[13px] text-text-muted">
               No claims are waiting for your approval right now.
             </p>
           </Card>
         ) : (
-          <div className="space-y-3">{pending.map((c) => renderClaimCard(c, true))}</div>
+          <div className="space-y-3">
+            {controller.pending.map((c) => renderClaimCard(c))}
+          </div>
         )}
       </div>
 
-      {reviewed.length > 0 ? (
+      {controller.reviewed.length > 0 ? (
         <div>
           <h2 className="mb-3 font-display text-sm font-bold text-text">
             Recently reviewed
           </h2>
           <div className="space-y-3">
-            {reviewed.map((c) => renderClaimCard(c, false))}
+            {controller.reviewed.map((c) => renderClaimCard(c))}
           </div>
         </div>
       ) : null}

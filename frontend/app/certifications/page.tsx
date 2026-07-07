@@ -2,13 +2,17 @@
 
 // ── Certifications ───────────────────────────────────────────────────────────
 // Product + qualification certificates with expiry tracking and tender tooling.
-// Role-scoped (HANDOFF §2/§3):
-//  • Employee — sees only their own certs.
-//  • Manager  — sees their team's certs (manager_id) + tender export.
-//  • Admin    — sees all certs, can upload/edit any, and gets the tender tools.
-// Mock-data phase: all reads/writes go through the '@/lib/mock' accessor seam.
+// Role-scoped (HANDOFF §2/§3, enforced by RLS in live mode):
+//  • Employee — sees only their own certs; can upload/edit their own.
+//  • Manager  — sees their team's certs (read-only) + tender export.
+//  • Admin    — sees all certs, can upload/edit/delete any, and gets the tender tools.
+// Live mode (NEXT_PUBLIC_PULSE_DATA=live): reads + writes go through the
+// authenticated /api/rest proxy via useCertifications (RLS is the boundary).
+// Mock mode: the same hook delegates to the '@/lib/mock' accessor seam.
+// The certificate FILE itself is deferred to SharePoint (WS-10/B5) — `file_ref`
+// carries link/metadata only for now.
 
-import { useMemo, useReducer, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -27,19 +31,17 @@ import {
   type BadgeColor,
 } from '@/components/ui'
 import { can } from '@/lib/capabilities'
+import { useCertifications } from '@/lib/data/useCertifications'
+import { useCurrentEmployee } from '@/lib/data/useCurrentEmployee'
+import { useDirectory } from '@/lib/data/useDirectory'
 import { useSession } from '@/lib/mock/session'
 import {
   CERT_VENDORS,
   NQF_LEVELS,
   certExpiryInfo,
-  deleteCertification,
   formatCertDate,
-  getEmployee,
-  listCertifications,
-  listEmployees,
   needsRecert,
   productsForOrg,
-  saveCertification,
   sortCertsByUrgency,
   type CertificationInput,
 } from '@/lib/mock'
@@ -48,7 +50,11 @@ import type {
   CertExpiryState,
   CertVendor,
   Certification,
+  Employee,
+  UserRole,
 } from '@/types/database'
+
+const LIVE = process.env.NEXT_PUBLIC_PULSE_DATA === 'live'
 
 // ── Presentation maps ─────────────────────────────────────────────────────────
 
@@ -83,42 +89,53 @@ type DraftState = {
   file_ref: string
 }
 
-function nameFor(employeeId: string): string {
-  return getEmployee(employeeId)?.display_name ?? 'Unknown'
-}
-
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function CertificationsPage() {
-  const { role, currentEmployee } = useSession()
   const { toast } = useToast()
-  const [, forceRender] = useReducer((n: number) => n + 1, 0)
+
+  // Identity: real signed-in employee (live) or the mock persona (mock mode).
+  const mockSession = useSession()
+  const liveEmployee = useCurrentEmployee()
+  const role = (LIVE ? liveEmployee.role : mockSession.role) as
+    | UserRole
+    | undefined
+  const employeeId =
+    (LIVE ? liveEmployee.id : mockSession.currentEmployee?.id) ?? ''
+  const identityLoading = LIVE ? liveEmployee.loading : false
+  const signedIn = LIVE ? !!liveEmployee.id : !!mockSession.currentEmployee
 
   const isStaff = role === 'admin' || role === 'manager'
-  const canManage = can(role, 'uploadCertificates') // admin: manage anyone's certs
-  const canUploadOwn = can(role, 'uploadOwnCertificates') // every role: own certs
+  const canManage = role ? can(role, 'uploadCertificates') : false // admin: manage anyone's certs
+  const canUploadOwn = role ? can(role, 'uploadOwnCertificates') : false // every role: own certs
 
   const [filter, setFilter] = useState<FilterKey>('all')
   const [vendorFilter, setVendorFilter] = useState<string>('all')
   const [productFilter, setProductFilter] = useState<string>('all')
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [draft, setDraft] = useState<DraftState | null>(null)
+  const [saving, setSaving] = useState(false)
 
-  const employeeId = currentEmployee?.id ?? ''
+  // Data: RLS-scoped live rows via the proxy, or the role-scoped mock seam.
+  const {
+    certifications: scoped,
+    loading: certsLoading,
+    error: certsError,
+    save,
+    remove,
+  } = useCertifications(role, employeeId)
 
-  // Role-scoped read through the seam. Manager scopes by their own id (manager_id
-  // of the team); employee scopes to self; admin sees all.
-  const scoped = useMemo(
-    () =>
-      currentEmployee
-        ? listCertifications(role, employeeId, employeeId)
-        : [],
-    // forceRender bumps after every mutation so the list refreshes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [role, employeeId, currentEmployee],
+  // Names for cert owners + the admin person picker (live directory or mock).
+  const { employees } = useDirectory()
+  const nameById = useMemo(
+    () => new Map(employees.map((e) => [e.id, e.display_name])),
+    [employees],
   )
+  const nameFor = (id: string): string => nameById.get(id) ?? 'Unknown'
 
-  if (!currentEmployee) {
+  const loading = identityLoading || certsLoading
+
+  if (!loading && !signedIn) {
     return (
       <AppShell>
         <PageHeader eyebrow="Development" title="Certifications" />
@@ -192,8 +209,8 @@ export default function CertificationsPage() {
     })
   }
 
-  function handleSave() {
-    if (!draft) return
+  async function handleSave() {
+    if (!draft || saving) return
     if (!draft.name.trim()) {
       toast({ title: 'Name required', message: 'Enter the certification / qualification name.', variant: 'error' })
       return
@@ -204,7 +221,8 @@ export default function CertificationsPage() {
     }
     const input: CertificationInput = {
       // Non-admins can only ever file a certificate against themselves — never
-      // another person — regardless of what the draft holds.
+      // another person — regardless of what the draft holds. (RLS re-enforces
+      // this server-side in live mode: cert_ins/cert_upd are self-or-admin.)
       employee_id: canManage ? draft.employee_id : employeeId,
       cclass: draft.cclass,
       vendor: draft.vendor,
@@ -216,22 +234,50 @@ export default function CertificationsPage() {
       file_ref: draft.file_ref,
     }
     const isNew = !draft.id
-    const saved = saveCertification(input, draft.id)
-    setDraft(null)
-    forceRender()
-    toast({
-      title: isNew ? 'Certificate uploaded' : 'Certificate updated',
-      message: `${saved.name} ${isNew ? 'added for' : 'saved for'} ${nameFor(saved.employee_id)}.`,
-      variant: 'success',
-    })
+    setSaving(true)
+    try {
+      const saved = await save(input, draft.id)
+      setDraft(null)
+      if (!saved) {
+        // Zero rows affected = RLS default-deny: the prior view stays unchanged
+        // (silent at the wire, per the outcome contract's MSG-DENY-RLS).
+        return
+      }
+      toast({
+        title: isNew ? 'Certificate uploaded' : 'Certificate updated',
+        message: `${saved.name} ${isNew ? 'added for' : 'saved for'} ${nameFor(saved.employee_id)}.`,
+        variant: 'success',
+      })
+    } catch {
+      toast({
+        title: "Couldn't save",
+        message: 'Something went wrong — your changes were not saved. Try again.',
+        variant: 'error',
+      })
+    } finally {
+      setSaving(false)
+    }
   }
 
-  function handleDelete() {
-    if (!draft?.id) return
-    deleteCertification(draft.id)
-    setDraft(null)
-    forceRender()
-    toast({ title: 'Certificate removed', message: 'The certificate was deleted.' })
+  async function handleDelete() {
+    if (!draft?.id || saving) return
+    setSaving(true)
+    try {
+      const removed = await remove(draft.id)
+      setDraft(null)
+      if (removed) {
+        toast({ title: 'Certificate removed', message: 'The certificate was deleted.' })
+      }
+      // !removed = RLS default-deny: silent, prior view unchanged.
+    } catch {
+      toast({
+        title: "Couldn't save",
+        message: 'Something went wrong — your changes were not saved. Try again.',
+        variant: 'error',
+      })
+    } finally {
+      setSaving(false)
+    }
   }
 
   // ── Tender download stubs ──
@@ -288,137 +334,170 @@ export default function CertificationsPage() {
       />
 
       <div className="flex flex-col gap-6 px-10 py-8">
-        {/* Stat cards */}
-        <StatCardGrid>
-          <StatCard value={scoped.length} label="Total certificates" accent="red" />
-          <StatCard value={productCerts.length} label="Product certs" accent="blue" />
-          <StatCard value={gradCerts.length} label="Qualifications" accent="pink" />
-          <StatCard value={expiringCount} label="Need recertification" accent="amber" />
-        </StatCardGrid>
-
-        {/* Filter segmented control */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex flex-wrap gap-1 rounded-btn border border-surface-border bg-surface p-1">
-            {FILTERS.map((f) => {
-              const active = filter === f.key
-              return (
-                <button
-                  key={f.key}
-                  type="button"
-                  onClick={() => setFilter(f.key)}
-                  aria-pressed={active}
-                  className={`whitespace-nowrap rounded-[7px] px-[15px] py-2 font-display text-[12.5px] font-semibold transition-all ${
-                    active
-                      ? 'bg-surface-card text-jera-red shadow-card'
-                      : 'text-text-muted hover:text-text-secondary'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Admin / manager tender tools */}
-        {isStaff ? (
-          <Card title="Tender tools">
-            <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Select
-                  label="Organisation"
-                  value={vendorFilter}
-                  onChange={(e) => {
-                    setVendorFilter(e.target.value)
-                    setProductFilter('all')
-                  }}
-                  options={[
-                    { value: 'all', label: 'All organisations' },
-                    ...vendorsPresent.map((v) => ({ value: v, label: v })),
-                  ]}
-                />
-                <Select
-                  label="Product"
-                  value={productFilter}
-                  onChange={(e) => setProductFilter(e.target.value)}
-                  options={[
-                    { value: 'all', label: 'All products' },
-                    ...productsPresent.map((v) => ({ value: v, label: v })),
-                  ]}
-                />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelected(Object.fromEntries(cards.map((c) => [c.id, true])))}
-                  disabled={cards.length === 0}
-                >
-                  Select all shown
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelected({})}
-                  disabled={selCount === 0}
-                >
-                  Clear
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={downloadSelected}
-                  disabled={selCount === 0}
-                >
-                  Download selected ({selCount})
-                </Button>
-                <Button variant="ghost" size="sm" onClick={downloadAll}>
-                  ⬇ Download all ({cards.length})
-                </Button>
-              </div>
-            </div>
-          </Card>
-        ) : null}
-
-        {/* Cert cards grid */}
-        {cards.length === 0 ? (
-          <div className="flex flex-col items-center gap-4">
-            <EmptyState
-              icon="🏅"
-              title={scoped.length === 0 ? 'No certificates yet' : 'No certificates'}
-              description={
-                scoped.length === 0
-                  ? canUploadOwn
-                    ? 'Add your product and qualification certificates here to track them and their expiry.'
-                    : 'No certificates are on file yet.'
-                  : filter === 'expiring'
-                    ? 'Nothing is expiring or expired right now.'
-                    : 'No certificates match the current filters.'
-              }
-            />
-            {scoped.length === 0 && canUploadOwn ? (
-              <Button onClick={() => openEditor()} leftIcon={<span aria-hidden>＋</span>}>
-                Upload your first certificate
-              </Button>
-            ) : null}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 min-[680px]:grid-cols-2 min-[1100px]:grid-cols-3">
-            {cards.map((c) => (
-              <CertCard
-                key={c.id}
-                cert={c}
-                selectable={isStaff}
-                selected={!!selected[c.id]}
-                canEdit={canManage || c.employee_id === employeeId}
-                onSelect={() => toggleSelect(c.id)}
-                onEdit={() => openEditor(c)}
-                onView={() =>
-                  toast({ title: 'Opening certificate', message: `${c.file_ref} — download starting.` })
-                }
+        {loading ? (
+          // MSG-PENDING-SAVING: list skeleton until the read resolves.
+          <div
+            className="grid grid-cols-1 gap-4 min-[680px]:grid-cols-2 min-[1100px]:grid-cols-3"
+            aria-busy="true"
+            aria-label="Loading certificates"
+          >
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-[180px] animate-pulse rounded-card border border-surface-border bg-surface-card"
               />
             ))}
           </div>
+        ) : certsError ? (
+          // MSG-ERR-GENERIC on read failure: error surface + empty list.
+          <div
+            role="alert"
+            className="rounded-card border border-jera-red/30 bg-jera-red/10 px-5 py-4 text-[13px] text-jera-red"
+          >
+            Couldn’t load certificates ({certsError}). Please refresh, or contact
+            IT if it keeps happening.
+          </div>
+        ) : (
+          <>
+            {/* Stat cards */}
+            <StatCardGrid>
+              <StatCard value={scoped.length} label="Total certificates" accent="red" />
+              <StatCard value={productCerts.length} label="Product certs" accent="blue" />
+              <StatCard value={gradCerts.length} label="Qualifications" accent="pink" />
+              <StatCard value={expiringCount} label="Need recertification" accent="amber" />
+            </StatCardGrid>
+
+            {/* Filter segmented control */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="inline-flex flex-wrap gap-1 rounded-btn border border-surface-border bg-surface p-1">
+                {FILTERS.map((f) => {
+                  const active = filter === f.key
+                  return (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => setFilter(f.key)}
+                      aria-pressed={active}
+                      className={`whitespace-nowrap rounded-[7px] px-[15px] py-2 font-display text-[12.5px] font-semibold transition-all ${
+                        active
+                          ? 'bg-surface-card text-jera-red shadow-card'
+                          : 'text-text-muted hover:text-text-secondary'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Admin / manager tender tools */}
+            {isStaff ? (
+              <Card title="Tender tools">
+                <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Select
+                      label="Organisation"
+                      value={vendorFilter}
+                      onChange={(e) => {
+                        setVendorFilter(e.target.value)
+                        setProductFilter('all')
+                      }}
+                      options={[
+                        { value: 'all', label: 'All organisations' },
+                        ...vendorsPresent.map((v) => ({ value: v, label: v })),
+                      ]}
+                    />
+                    <Select
+                      label="Product"
+                      value={productFilter}
+                      onChange={(e) => setProductFilter(e.target.value)}
+                      options={[
+                        { value: 'all', label: 'All products' },
+                        ...productsPresent.map((v) => ({ value: v, label: v })),
+                      ]}
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelected(Object.fromEntries(cards.map((c) => [c.id, true])))}
+                      disabled={cards.length === 0}
+                    >
+                      Select all shown
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelected({})}
+                      disabled={selCount === 0}
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={downloadSelected}
+                      disabled={selCount === 0}
+                    >
+                      Download selected ({selCount})
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={downloadAll}>
+                      ⬇ Download all ({cards.length})
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ) : null}
+
+            {/* Cert cards grid */}
+            {cards.length === 0 ? (
+              <div className="flex flex-col items-center gap-4">
+                <EmptyState
+                  icon="🏅"
+                  title={scoped.length === 0 ? 'No certificates yet' : 'No certificates'}
+                  description={
+                    scoped.length === 0
+                      ? canUploadOwn
+                        ? 'Add your product and qualification certificates here to track them and their expiry.'
+                        : 'No certificates are on file yet.'
+                      : filter === 'expiring'
+                        ? 'Nothing is expiring or expired right now.'
+                        : 'No certificates match the current filters.'
+                  }
+                />
+                {scoped.length === 0 && canUploadOwn ? (
+                  <Button onClick={() => openEditor()} leftIcon={<span aria-hidden>＋</span>}>
+                    Upload your first certificate
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 min-[680px]:grid-cols-2 min-[1100px]:grid-cols-3">
+                {cards.map((c) => (
+                  <CertCard
+                    key={c.id}
+                    cert={c}
+                    ownerName={nameFor(c.employee_id)}
+                    selectable={isStaff}
+                    selected={!!selected[c.id]}
+                    canEdit={canManage || c.employee_id === employeeId}
+                    onSelect={() => toggleSelect(c.id)}
+                    onEdit={() => openEditor(c)}
+                    onView={() =>
+                      toast({
+                        title: 'Opening certificate',
+                        message: c.file_ref
+                          ? `${c.file_ref} — download starting.`
+                          : 'No file is attached to this certificate yet.',
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -428,6 +507,9 @@ export default function CertificationsPage() {
           draft={draft}
           setDraft={setDraft}
           canPickPerson={canManage}
+          people={employees}
+          personName={nameFor(draft.employee_id)}
+          saving={saving}
           onClose={() => setDraft(null)}
           onSave={handleSave}
           onDelete={draft.id ? handleDelete : undefined}
@@ -441,6 +523,7 @@ export default function CertificationsPage() {
 
 function CertCard({
   cert,
+  ownerName,
   selectable,
   selected,
   canEdit,
@@ -449,6 +532,7 @@ function CertCard({
   onView,
 }: {
   cert: Certification
+  ownerName: string
   selectable: boolean
   selected: boolean
   canEdit: boolean
@@ -500,9 +584,9 @@ function CertCard({
       </div>
 
       <div className="flex items-center gap-2">
-        <Avatar name={nameFor(cert.employee_id)} size="sm" />
+        <Avatar name={ownerName} size="sm" />
         <span className="truncate text-[12.5px] font-medium text-text-secondary">
-          {nameFor(cert.employee_id)}
+          {ownerName}
         </span>
       </div>
 
@@ -529,6 +613,9 @@ function CertEditor({
   draft,
   setDraft,
   canPickPerson,
+  people,
+  personName,
+  saving,
   onClose,
   onSave,
   onDelete,
@@ -536,11 +623,13 @@ function CertEditor({
   draft: DraftState
   setDraft: (next: DraftState) => void
   canPickPerson: boolean
+  people: Employee[]
+  personName: string
+  saving: boolean
   onClose: () => void
   onSave: () => void
   onDelete?: () => void
 }) {
-  const people = listEmployees()
   const isProduct = draft.cclass === 'product'
   const set = (patch: Partial<DraftState>) => setDraft({ ...draft, ...patch })
 
@@ -553,14 +642,17 @@ function CertEditor({
       footer={
         <>
           {onDelete ? (
-            <Button variant="danger" onClick={onDelete} className="mr-auto">
+            <Button variant="danger" onClick={onDelete} disabled={saving} className="mr-auto">
               Delete
             </Button>
           ) : null}
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={onSave}>Save</Button>
+          {/* MSG-PENDING-SAVING: disabled + busy until the write resolves. */}
+          <Button onClick={onSave} isLoading={saving}>
+            Save
+          </Button>
         </>
       }
     >
@@ -600,7 +692,7 @@ function CertEditor({
             options={people.map((p) => ({ value: p.id, label: p.display_name }))}
           />
         ) : (
-          <Input label="Person" value={nameFor(draft.employee_id)} disabled />
+          <Input label="Person" value={personName} disabled />
         )}
 
         <Input

@@ -58,7 +58,7 @@ export const onboardingTasks: OnboardingTask[] = [
   { id: 't26', phase_id: 'training', title: 'Complete Zoho Desk SOP walkthrough', default_owner: 'ryan', priority: 'high', system: 'zoho', days_offset: 4, visibility: 'employee', sort_order: 3 },
   { id: 't36', phase_id: 'training', title: 'Complete Timekeeping SOP walkthrough', default_owner: 'ryan', priority: 'high', system: null, days_offset: 4, visibility: 'employee', sort_order: 4 },
   { id: 't37', phase_id: 'training', title: 'Complete Client Access SOP', default_owner: 'ryan', priority: 'high', system: null, days_offset: 4, visibility: 'employee', sort_order: 5 },
-  { id: 't38', phase_id: 'training', title: 'Read & acknowledge all 20 HR policies', default_owner: 'ryan', priority: 'high', system: null, days_offset: 5, visibility: 'employee', sort_order: 6 },
+  { id: 't38', phase_id: 'training', title: 'Read & acknowledge all 24 HR policies', default_owner: 'ryan', priority: 'high', system: null, days_offset: 5, visibility: 'employee', sort_order: 6 },
   { id: 't27', phase_id: 'training', title: 'Assign mentor for first 30 days', default_owner: 'ryan', priority: 'medium', system: null, days_offset: 5, visibility: 'admin', sort_order: 7 },
   { id: 't28', phase_id: 'training', title: 'Schedule weekly check-ins (Month 1)', default_owner: 'hr', priority: 'medium', system: 'zoho', days_offset: 5, visibility: 'admin', sort_order: 8 },
 ]

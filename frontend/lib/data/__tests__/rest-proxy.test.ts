@@ -30,9 +30,38 @@ describe('isWriteAllowed', () => {
     expect(isWriteAllowed('hr_policy_acknowledgements', 'PATCH')).toBe(true)
   })
 
+  it('allows certification writes (WS-5: self-upload + admin manage/delete)', () => {
+    expect(isWriteAllowed('certifications', 'POST')).toBe(true)
+    expect(isWriteAllowed('certifications', 'PATCH')).toBe(true)
+    expect(isWriteAllowed('certifications', 'DELETE')).toBe(true)
+  })
+
   it('denies methods not configured for the table', () => {
     expect(isWriteAllowed('hr_policy_acknowledgements', 'DELETE')).toBe(false)
     expect(isWriteAllowed('hr_policy_acknowledgements', 'GET')).toBe(false)
+    expect(isWriteAllowed('certifications', 'GET')).toBe(false)
+    expect(isWriteAllowed('certifications', 'PUT')).toBe(false)
+  })
+
+  it('allows the WS-4 expense writes (claims + lines + AA certificate)', () => {
+    expect(isWriteAllowed('expense_claims', 'POST')).toBe(true)
+    expect(isWriteAllowed('expense_claims', 'PATCH')).toBe(true)
+    for (const t of [
+      'expense_travel_lines',
+      'expense_other_lines',
+      'expense_advance_lines',
+    ]) {
+      expect(isWriteAllowed(t, 'POST')).toBe(true)
+      expect(isWriteAllowed(t, 'PATCH')).toBe(true)
+      expect(isWriteAllowed(t, 'DELETE')).toBe(true)
+    }
+    expect(isWriteAllowed('aa_rate_certificates', 'POST')).toBe(true)
+    expect(isWriteAllowed('aa_rate_certificates', 'PATCH')).toBe(true)
+  })
+
+  it('never allows deleting a claim or a certificate through the proxy', () => {
+    expect(isWriteAllowed('expense_claims', 'DELETE')).toBe(false)
+    expect(isWriteAllowed('aa_rate_certificates', 'DELETE')).toBe(false)
   })
 
   it('denies writes to tables not on the allowlist', () => {
