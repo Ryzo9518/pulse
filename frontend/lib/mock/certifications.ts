@@ -186,9 +186,17 @@ export function formatCertDate(iso: string | null): string {
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`
 }
 
-/** The ISO "today" used for expiry classification. Overridable for tests. */
+/**
+ * The "today" used for expiry classification. Overridable for tests. Live mode
+ * classifies against the real clock (a cert's traffic-light must move as time
+ * passes); mock mode stays pinned to the demo data set's reference date so the
+ * seeded certs render deterministically.
+ */
 function referenceDate(reference?: Date): Date {
-  return reference ?? new Date('2026-06-15T00:00:00.000Z')
+  if (reference) return reference
+  return process.env.NEXT_PUBLIC_PULSE_DATA === 'live'
+    ? new Date()
+    : new Date('2026-06-15T00:00:00.000Z')
 }
 
 /**

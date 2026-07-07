@@ -523,7 +523,7 @@ function StaffDashboard({ role, data }: { role: UserRole; data: DashboardData })
     })
   }
 
-  void role // role currently informs only the (live-empty) certification scope
+  void role // live cert scope comes from RLS; mock scope is applied in useDashboardData
 
   return (
     <div className="space-y-7">

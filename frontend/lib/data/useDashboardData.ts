@@ -83,26 +83,30 @@ export function useDashboardData(
       getJson<Array<{ acknowledged: boolean }>>(
         '/api/rest/hr_policy_acknowledgements?select=acknowledged',
       ),
+      // WS-5: RLS-scoped certs (self / team / all) feed the recert alerts panel.
+      getJson<Certification[]>('/api/rest/certifications?select=*'),
     ])
-      .then(([roster, onboardingSummary, tasks, taskStatuses, policies, acks]) => {
-        if (!active) return
-        setLive({
-          roster,
-          onboardingSummary,
-          tasks,
-          taskStatuses,
-          policy: {
-            acknowledgedCount: acks.filter((a) => a.acknowledged).length,
-            total: policies.length,
-          },
-          // Empty tables for now — screens render their existing empty states.
-          certifications: [],
-          billableSummary: [],
-          expenseClaims: [],
-          loading: false,
-          error: null,
-        })
-      })
+      .then(
+        ([roster, onboardingSummary, tasks, taskStatuses, policies, acks, certifications]) => {
+          if (!active) return
+          setLive({
+            roster,
+            onboardingSummary,
+            tasks,
+            taskStatuses,
+            policy: {
+              acknowledgedCount: acks.filter((a) => a.acknowledged).length,
+              total: policies.length,
+            },
+            certifications,
+            // Empty tables for now — screens render their existing empty states.
+            billableSummary: [],
+            expenseClaims: [],
+            loading: false,
+            error: null,
+          })
+        },
+      )
       .catch((e: unknown) => {
         if (active) setError(e instanceof Error ? e.message : 'Failed to load')
       })
