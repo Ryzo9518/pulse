@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import type { ChangeEvent } from 'react'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -15,21 +16,20 @@ import {
   useToast,
 } from '@/components/ui'
 import type { BadgeColor } from '@/components/ui'
-import {
-  LINK_FILE_TYPE,
-  addDocuments,
-  deleteDocument,
-  listDocuments,
-  updateDocument,
-} from '@/lib/mock'
+import { LINK_FILE_TYPE } from '@/lib/mock'
 import { can } from '@/lib/capabilities'
 import { useSession } from '@/lib/mock/session'
+import { useCurrentEmployee } from '@/lib/data/useCurrentEmployee'
+import { useDocuments } from '@/lib/data/useDocuments'
 import type {
   Document,
   DocumentCategory,
   DocumentDraftFile,
   DocumentSource,
+  UserRole,
 } from '@/types/database'
+
+const LIVE = process.env.NEXT_PUBLIC_PULSE_DATA === 'live'
 
 // Humane headings for each DocumentCategory value (matches FEATURE_SPEC.md +
 // renderDocLibrary in the prototype). DECISION D5: the build keeps its richer
@@ -82,24 +82,31 @@ function fileTypeLabel(doc: Document): string {
   return (doc.file_type ?? 'file').toUpperCase()
 }
 
+function formatSize(bytes: number): string {
+  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`
+  return `${Math.max(1, Math.round(bytes / 1000))} KB`
+}
+
 // Size label: LINK documents show "SharePoint"; files show a rounded KB/MB value.
 function sizeLabel(doc: Document): string {
   if (isLinkDoc(doc)) return 'SharePoint'
   const bytes = doc.file_size_bytes
   if (!bytes) return ''
-  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`
-  return `${Math.round(bytes / 1000)} KB`
+  return formatSize(bytes)
 }
 
-// Simulated file picker — storage is stubbed in the mock-data phase, so we cycle
-// through realistic sample files (mirrors the prototype's docSimAddFile).
-const SAMPLE_FILES: DocumentDraftFile[] = [
-  { name: 'Onboarding_Checklist_2026.pdf', file_type: 'pdf', size_label: '720 KB' },
-  { name: 'B-BBEE_Certificate.pdf', file_type: 'pdf', size_label: '1.3 MB' },
-  { name: 'Client_SOW_Template.docx', file_type: 'docx', size_label: '210 KB' },
-  { name: 'Leave_Tracker.xlsx', file_type: 'xlsx', size_label: '96 KB' },
-  { name: 'Org_Chart_June.pdf', file_type: 'pdf', size_label: '540 KB' },
-]
+// Capture a picked file as draft metadata. The file BYTES are not uploaded yet —
+// storage lands with SharePoint (WS-10/B5); we keep name/type/size in the row.
+function toDraftFile(file: File): DocumentDraftFile {
+  const dot = file.name.lastIndexOf('.')
+  const ext = dot > 0 ? file.name.slice(dot + 1).toLowerCase() : 'file'
+  return {
+    name: file.name,
+    file_type: ext,
+    size_label: formatSize(file.size),
+    size_bytes: file.size,
+  }
+}
 
 interface DraftState {
   category: DocumentCategory
@@ -115,18 +122,32 @@ function emptyDraft(category: DocumentCategory = 'contracts_policies'): DraftSta
 
 export default function DocumentsPage() {
   const { toast } = useToast()
-  const { role } = useSession()
-  const canManage = can(role, 'uploadDocuments')
 
-  // Re-render trigger: the mock layer mutates module-level state in place, so we
-  // bump a version after each mutation to pull a fresh listDocuments().
-  const [version, setVersion] = useState(0)
-  const documents = useMemo(() => listDocuments(), [version])
+  // Identity: real signed-in employee (live) or the mock persona (mock mode).
+  const mockSession = useSession()
+  const liveEmployee = useCurrentEmployee()
+  const role = LIVE ? liveEmployee.role : mockSession.role
+  const employeeId = LIVE ? liveEmployee.id : mockSession.currentEmployee?.id
+  const canManage = role ? can(role as UserRole, 'uploadDocuments') : false
+
+  const {
+    documents,
+    ackedIds,
+    loading,
+    error,
+    add,
+    replace,
+    remove,
+    acknowledge,
+  } = useDocuments(employeeId)
 
   // Modal state. `replaceTarget` distinguishes "Add documents" from "Update".
   const [modalOpen, setModalOpen] = useState(false)
   const [replaceTarget, setReplaceTarget] = useState<Document | null>(null)
   const [draft, setDraft] = useState<DraftState>(() => emptyDraft())
+  const [saving, setSaving] = useState(false)
+  const [ackPendingId, setAckPendingId] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Group documents by category, then walk CATEGORY_ORDER so headings render in
   // a stable, intentional order and empty categories drop out.
@@ -145,7 +166,7 @@ export default function DocumentsPage() {
   }, [documents])
 
   function handleOpen(doc: Document) {
-    if (isLinkDoc(doc) && doc.file_url) {
+    if (doc.file_url) {
       window.open(doc.file_url, '_blank', 'noopener,noreferrer')
       toast({
         title: `🔗 Opening "${doc.title}"`,
@@ -154,10 +175,29 @@ export default function DocumentsPage() {
       return
     }
     toast({
-      title: `📂 "${doc.title}" opened`,
+      title: `📂 "${doc.title}"`,
       message:
-        'In the production app this would download or preview the document.',
+        'This document has no file attached yet — file storage arrives with the SharePoint integration.',
     })
+  }
+
+  async function handleAcknowledge(doc: Document) {
+    setAckPendingId(doc.id)
+    try {
+      await acknowledge(doc.id)
+      toast({
+        title: 'Acknowledged',
+        message: `Your acknowledgement of "${doc.title}" was recorded.`,
+      })
+    } catch (err) {
+      toast({
+        variant: 'error',
+        title: 'Could not save',
+        message: err instanceof Error ? err.message : 'Something went wrong.',
+      })
+    } finally {
+      setAckPendingId(null)
+    }
   }
 
   function openAddModal() {
@@ -178,7 +218,7 @@ export default function DocumentsPage() {
     setDraft(emptyDraft())
   }
 
-  function handleDelete(doc: Document) {
+  async function handleDelete(doc: Document) {
     if (
       !window.confirm(
         `Remove "${doc.title}" from the document library? Staff will no longer see it.`,
@@ -186,31 +226,42 @@ export default function DocumentsPage() {
     ) {
       return
     }
-    deleteDocument(doc.id)
-    setVersion((v) => v + 1)
-    toast({
-      title: 'Document removed',
-      message: `"${doc.title}" was removed from the library.`,
-    })
+    try {
+      await remove(doc.id)
+      toast({
+        title: 'Document removed',
+        message: `"${doc.title}" was removed from the library.`,
+      })
+    } catch (err) {
+      toast({
+        variant: 'error',
+        title: 'Could not remove',
+        message: err instanceof Error ? err.message : 'Something went wrong.',
+      })
+    }
   }
 
-  function addSimulatedFile() {
-    setDraft((d) => {
-      // In replace mode only one (the latest) file matters; cap at one.
-      const next = SAMPLE_FILES[d.files.length % SAMPLE_FILES.length]
-      const files = replaceTarget ? [next] : [...d.files, next]
-      return { ...d, files }
-    })
+  function handleFilesChosen(e: ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []).map(toDraftFile)
+    if (picked.length) {
+      setDraft((d) => {
+        // In replace mode only one (the latest) file matters; cap at one.
+        const files = replaceTarget ? picked.slice(-1) : [...d.files, ...picked]
+        return { ...d, files }
+      })
+    }
+    e.target.value = ''
   }
 
   function removeFile(index: number) {
     setDraft((d) => ({ ...d, files: d.files.filter((_, i) => i !== index) }))
   }
 
-  function handleSave() {
+  async function handleSave() {
+    setSaving(true)
     try {
       if (replaceTarget) {
-        updateDocument(replaceTarget.id, {
+        await replace(replaceTarget.id, {
           source: draft.source,
           file: draft.source === 'upload' ? draft.files.at(-1) : undefined,
           sharepoint_url:
@@ -221,20 +272,18 @@ export default function DocumentsPage() {
           message: `"${replaceTarget.title}" replaced with a new version.`,
         })
       } else {
-        const created = addDocuments({
+        const n = await add({
           category: draft.category,
           source: draft.source,
           files: draft.files,
           sharepoint_url: draft.sharepoint,
           link_name: draft.linkName,
         })
-        const n = created.length
         toast({
           title: 'Documents added',
           message: `${n} ${n === 1 ? 'item' : 'items'} added to ${CATEGORY_LABELS[draft.category]}.`,
         })
       }
-      setVersion((v) => v + 1)
       closeModal()
     } catch (err) {
       toast({
@@ -242,6 +291,8 @@ export default function DocumentsPage() {
         title: 'Could not save',
         message: err instanceof Error ? err.message : 'Something went wrong.',
       })
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -264,7 +315,28 @@ export default function DocumentsPage() {
         }
       />
       <div className="px-10 py-8">
-        {groups.length === 0 ? (
+        {loading ? (
+          <ul
+            className="flex flex-col gap-3"
+            aria-busy="true"
+            aria-label="Loading documents"
+          >
+            {Array.from({ length: 6 }).map((_, i) => (
+              <li
+                key={i}
+                className="h-[68px] animate-pulse rounded-card border border-surface-border bg-surface-card"
+              />
+            ))}
+          </ul>
+        ) : error ? (
+          <div
+            role="alert"
+            className="rounded-card border border-jera-red/30 bg-jera-red/10 px-5 py-4 text-[13px] text-jera-red"
+          >
+            Couldn’t load documents ({error}). Please refresh, or contact IT if
+            it keeps happening.
+          </div>
+        ) : groups.length === 0 ? (
           <EmptyState
             icon="📂"
             title="No documents yet"
@@ -280,6 +352,7 @@ export default function DocumentsPage() {
                 <div className="flex flex-col gap-2">
                   {group.docs.map((doc) => {
                     const size = sizeLabel(doc)
+                    const acked = ackedIds.has(doc.id)
                     return (
                       <Card key={doc.id} padded={false}>
                         <div className="flex w-full items-center gap-3 px-5 py-4">
@@ -309,6 +382,23 @@ export default function DocumentsPage() {
                               ) : null}
                             </span>
                           </button>
+                          {acked ? (
+                            <span className="flex-shrink-0 text-[11px] font-semibold text-jera-teal">
+                              Acknowledged ✓
+                            </span>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={ackPendingId === doc.id}
+                              onClick={() => handleAcknowledge(doc)}
+                              aria-label={`Acknowledge ${doc.title}`}
+                            >
+                              {ackPendingId === doc.id
+                                ? 'Saving…'
+                                : 'Acknowledge'}
+                            </Button>
+                          )}
                           {canManage ? (
                             <>
                               <Button
@@ -355,11 +445,15 @@ export default function DocumentsPage() {
           title={replaceTarget ? 'Update document' : 'Add documents'}
           footer={
             <div className="flex justify-end gap-2">
-              <Button variant="secondary" onClick={closeModal}>
+              <Button variant="secondary" onClick={closeModal} disabled={saving}>
                 Cancel
               </Button>
-              <Button onClick={handleSave}>
-                {replaceTarget ? 'Replace document' : 'Add to library'}
+              <Button onClick={handleSave} disabled={saving}>
+                {saving
+                  ? 'Saving…'
+                  : replaceTarget
+                    ? 'Replace document'
+                    : 'Add to library'}
               </Button>
             </div>
           }
@@ -424,9 +518,18 @@ export default function DocumentsPage() {
 
             {isUpload ? (
               <div className="flex flex-col gap-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple={!replaceTarget}
+                  className="hidden"
+                  onChange={handleFilesChosen}
+                  aria-hidden="true"
+                  tabIndex={-1}
+                />
                 <button
                   type="button"
-                  onClick={addSimulatedFile}
+                  onClick={() => fileInputRef.current?.click()}
                   className="rounded-btn border border-dashed border-surface-border px-4 py-6 text-center text-[13px] text-text-secondary transition-colors hover:bg-surface-border-light"
                 >
                   <span className="block font-semibold text-text">

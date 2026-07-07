@@ -51,6 +51,13 @@ export const WRITE_ALLOWLIST: Record<string, ReadonlyArray<string>> = {
   // anyone's. RLS is the authority (cert_ins/cert_upd/cert_del: self-or-admin;
   // managers get team READ only via cert_sel) — this entry just opens the proxy.
   certifications: ['POST', 'PATCH', 'DELETE'],
+  // WS-6 Documents: admin adds document metadata (POST) and replaces or
+  // soft-deletes via PATCH (is_active=false — never a hard DELETE, so DELETE is
+  // deliberately absent). RLS `doc_admin` restricts all writes to admins.
+  documents: ['POST', 'PATCH'],
+  // WS-6 Documents: acknowledgement upsert (POST with on_conflict merge). RLS
+  // `docack_self` scopes writes to the signed-in employee (or admin).
+  document_acknowledgements: ['POST'],
 }
 
 /** True when `method` is an allowed write for `table`. */

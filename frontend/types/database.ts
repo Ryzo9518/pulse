@@ -405,6 +405,8 @@ export interface DocumentDraftFile {
   file_type: string
   /** Pre-formatted size label for display, e.g. '720 KB'. */
   size_label: string
+  /** Exact size in bytes when a real file was picked (live metadata capture). */
+  size_bytes?: number
 }
 
 /** Input for {@link addDocuments} — one category, either uploaded files or a SharePoint link. */
