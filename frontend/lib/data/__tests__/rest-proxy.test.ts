@@ -30,9 +30,17 @@ describe('isWriteAllowed', () => {
     expect(isWriteAllowed('hr_policy_acknowledgements', 'PATCH')).toBe(true)
   })
 
+  it('allows certification writes (WS-5: self-upload + admin manage/delete)', () => {
+    expect(isWriteAllowed('certifications', 'POST')).toBe(true)
+    expect(isWriteAllowed('certifications', 'PATCH')).toBe(true)
+    expect(isWriteAllowed('certifications', 'DELETE')).toBe(true)
+  })
+
   it('denies methods not configured for the table', () => {
     expect(isWriteAllowed('hr_policy_acknowledgements', 'DELETE')).toBe(false)
     expect(isWriteAllowed('hr_policy_acknowledgements', 'GET')).toBe(false)
+    expect(isWriteAllowed('certifications', 'GET')).toBe(false)
+    expect(isWriteAllowed('certifications', 'PUT')).toBe(false)
   })
 
   it('allows the WS-4 expense writes (claims + lines + AA certificate)', () => {

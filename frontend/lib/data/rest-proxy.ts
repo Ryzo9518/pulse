@@ -47,6 +47,10 @@ export const WRITE_ALLOWLIST: Record<string, ReadonlyArray<string>> = {
   expense_other_lines: ['POST', 'PATCH', 'DELETE'],
   expense_advance_lines: ['POST', 'PATCH', 'DELETE'],
   aa_rate_certificates: ['POST', 'PATCH'],
+  // WS-5 Certifications: any role adds/edits/removes OWN certs; admin manages
+  // anyone's. RLS is the authority (cert_ins/cert_upd/cert_del: self-or-admin;
+  // managers get team READ only via cert_sel) — this entry just opens the proxy.
+  certifications: ['POST', 'PATCH', 'DELETE'],
 }
 
 /** True when `method` is an allowed write for `table`. */
