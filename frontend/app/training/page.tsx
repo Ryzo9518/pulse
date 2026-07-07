@@ -1,15 +1,18 @@
 'use client'
 
 // ── Training (multi-product Sage U learning paths + billable readiness) ───────
-// Two experiences off the shared mock session role:
+// Two experiences off the shared session role:
 //  • Employee — a junior consultant picks the Sage product they are training on,
 //    works through nested learning paths (grouped, typed modules with checkbox
 //    completion), enters their instructor-led training (ILT) date, and watches
 //    the 4-stage billable ladder advance: Pre-supervised → Supervised-billable →
 //    ILT complete → Certified.
 //  • Admin / Manager — sees every junior consultant with product, ILT date and
-//    projected billable dates in one table.
-// Mock-data phase: reads/writes go through the '@/lib/mock' accessor seam.
+//    projected billable dates in one table (RLS scopes managers to their team).
+// Data flows through the useTraining / useTrainingTeam controllers: live mode
+// reads products + training_status + training_progress via the proxy and
+// persists self-only writes through server actions; mock mode keeps the
+// in-memory seam.
 
 import { useReducer } from 'react'
 
@@ -25,27 +28,19 @@ import {
   ProgressBar,
   Select,
   StatCard,
+  useToast,
   type BadgeColor,
   type DataTableColumn,
 } from '@/components/ui'
 import { isStaffRole } from '@/lib/capabilities'
+import { useTraining, useTrainingTeam } from '@/lib/data/useTraining'
 import { useSession } from '@/lib/mock/session'
 import {
   computePathProgress,
   formatDate,
-  getBillableSummary,
-  getEmployeeMilestones,
-  getEmployeeOverallProgress,
-  getProduct,
   getProductPaths,
-  getTrainingEnrolment,
-  listProducts,
   moduleKey,
   moduleTypeMeta,
-  setTrainingIltDate,
-  setTrainingMilestone,
-  setTrainingModule,
-  setTrainingProduct,
 } from '@/lib/mock'
 import type {
   BillableMilestone,
@@ -93,6 +88,13 @@ const TAG_BADGE: Record<ModuleTag, { color: BadgeColor; label: string }> = {
   recommended: { color: 'grey', label: 'Recommended' },
 }
 
+// MSG-ERR-GENERIC (outcome contract): shown when a write fails; state unchanged.
+const SAVE_ERROR = {
+  title: "Couldn't save",
+  message: 'Something went wrong — your changes were not saved. Try again.',
+  variant: 'error' as const,
+}
+
 export default function TrainingPage() {
   const { role } = useSession()
   return (
@@ -106,6 +108,36 @@ export default function TrainingPage() {
         {isStaffRole(role) ? <TeamView /> : <EmployeeView />}
       </div>
     </AppShell>
+  )
+}
+
+/** Pulsing placeholder cards while training data loads (aria-busy). */
+function LoadingCards() {
+  return (
+    <div
+      className="flex flex-col gap-6"
+      aria-busy="true"
+      aria-label="Loading training"
+    >
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div
+          key={i}
+          className="h-[140px] animate-pulse rounded-card border border-surface-border bg-surface-card"
+        />
+      ))}
+    </div>
+  )
+}
+
+function LoadError({ what, error }: { what: string; error: string }) {
+  return (
+    <div
+      role="alert"
+      className="rounded-card border border-jera-red/30 bg-jera-red/10 px-5 py-4 text-[13px] text-jera-red"
+    >
+      Couldn’t load {what} ({error}). Please refresh, or contact IT if it keeps
+      happening.
+    </div>
   )
 }
 
@@ -192,10 +224,12 @@ function BillableLadder({
 function ModuleRow({
   module,
   done,
+  disabled,
   onToggle,
 }: {
   module: TrainingModule
   done: boolean
+  disabled: boolean
   onToggle: (value: boolean) => void
 }) {
   const meta = moduleTypeMeta(module.type)
@@ -205,6 +239,7 @@ function ModuleRow({
         type="checkbox"
         className="mt-[3px] h-4 w-4 accent-jera-red"
         checked={done}
+        disabled={disabled}
         onChange={(e) => onToggle(e.target.checked)}
       />
       <span aria-hidden className="mt-px text-base leading-none">
@@ -243,6 +278,7 @@ function PathCard({
   path,
   modulesDone,
   open,
+  saving,
   onToggleOpen,
   onToggleModule,
 }: {
@@ -250,6 +286,7 @@ function PathCard({
   path: TrainingPath
   modulesDone: Record<string, boolean>
   open: boolean
+  saving: boolean
   onToggleOpen: () => void
   onToggleModule: (key: string, value: boolean) => void
 }) {
@@ -304,6 +341,7 @@ function PathCard({
                       key={key}
                       module={mod}
                       done={Boolean(modulesDone[key])}
+                      disabled={saving}
                       onToggle={(value) => onToggleModule(key, value)}
                     />
                   )
@@ -319,11 +357,12 @@ function PathCard({
 
 function EmployeeView() {
   const { currentEmployee } = useSession()
+  const { toast } = useToast()
   const [openState, setOpen] = useReducer(
     (prev: string | null, next: string | null) => (prev === next ? null : next),
     'core',
   )
-  const [, forceRender] = useReducer((n: number) => n + 1, 0)
+  const training = useTraining(currentEmployee)
 
   if (!currentEmployee) {
     return (
@@ -331,47 +370,54 @@ function EmployeeView() {
     )
   }
 
-  const employeeId = currentEmployee.id
-  const enrolment = getTrainingEnrolment(employeeId)
-  const productId = enrolment?.product_id ?? 'intacct'
-  const product = getProduct(productId)
-  const paths = getProductPaths(productId)
-  const modulesDone = enrolment?.modules_done ?? {}
-  const milestones = getEmployeeMilestones(employeeId)
-  const overall = getEmployeeOverallProgress(employeeId)
-  const stage: BillableStage = (() => {
-    if (enrolment?.certified) return 'certified'
-    if (enrolment?.ilt_done) return 'ilt'
-    if (enrolment?.getting_started_done) return 'supervised'
-    return 'pre'
-  })()
+  const {
+    products,
+    enrolment,
+    productId,
+    product,
+    paths,
+    milestones,
+    overall,
+    stage,
+    loading,
+    error,
+    saving,
+  } = training
 
-  const productOptions = listProducts().map((p) => ({ value: p.id, label: p.name }))
+  if (loading) return <LoadingCards />
+  if (error) return <LoadError what="your training" error={error} />
+
+  const modulesDone = enrolment?.modules_done ?? {}
+  const productOptions = products.map((p) => ({ value: p.id, label: p.name }))
+
+  const report = (ok: boolean) => {
+    if (!ok) toast(SAVE_ERROR)
+  }
 
   const handleProduct = (value: string) => {
-    setTrainingProduct(employeeId, value as ProductId)
-    // Re-open the first path of the newly selected product.
-    setOpen(null)
-    setOpen(getProductPaths(value as ProductId)[0]?.id ?? null)
-    forceRender()
+    void training.setProduct(value as ProductId).then((ok) => {
+      report(ok)
+      if (ok) {
+        // Re-open the first path of the newly selected product.
+        setOpen(null)
+        setOpen(getProductPaths(value as ProductId)[0]?.id ?? null)
+      }
+    })
   }
 
   const handleIltDate = (value: string) => {
-    setTrainingIltDate(employeeId, value || null)
-    forceRender()
+    void training.setIltDate(value || null).then(report)
   }
 
   const handleModule = (key: string, value: boolean) => {
-    setTrainingModule(employeeId, key, value)
-    forceRender()
+    void training.setModule(key, value).then(report)
   }
 
   const handleFlag = (
     key: 'getting_started_done' | 'ilt_done' | 'certified',
     value: boolean,
   ) => {
-    setTrainingMilestone(employeeId, key, value)
-    forceRender()
+    void training.setFlag(key, value).then(report)
   }
 
   return (
@@ -387,16 +433,20 @@ function EmployeeView() {
             label="Sage product"
             value={productId}
             options={productOptions}
+            disabled={saving}
             onChange={(e) => handleProduct(e.target.value)}
           />
           <Input
             label="Instructor-led training (ILT) date"
             type="date"
             value={enrolment?.ilt_date ?? ''}
+            disabled={saving}
             hint={
-              enrolment?.ilt_date
-                ? '✓ Saved. Your billable dates update from this date.'
-                : 'Enter the date once your ILT is booked.'
+              saving
+                ? 'Saving…'
+                : enrolment?.ilt_date
+                  ? '✓ Saved. Your billable dates update from this date.'
+                  : 'Enter the date once your ILT is booked.'
             }
             onChange={(e) => handleIltDate(e.target.value)}
           />
@@ -411,18 +461,21 @@ function EmployeeView() {
             label="Foundations + shadowing done"
             blurb={`Getting Started on ${product.name} complete — can bill supervised hours.`}
             checked={Boolean(enrolment?.getting_started_done)}
+            disabled={saving}
             onToggle={(v) => handleFlag('getting_started_done', v)}
           />
           <FlagRow
             label="ILT complete"
             blurb={`Finished the ${product.hours}-hour ${product.course} course.`}
             checked={Boolean(enrolment?.ilt_done)}
+            disabled={saving}
             onToggle={(v) => handleFlag('ilt_done', v)}
           />
           <FlagRow
             label="Certified"
             blurb={`Passed the ${product.cert} certification.`}
             checked={Boolean(enrolment?.certified)}
+            disabled={saving}
             onToggle={(v) => handleFlag('certified', v)}
           />
         </div>
@@ -447,6 +500,7 @@ function EmployeeView() {
               path={path}
               modulesDone={modulesDone}
               open={openState === path.id}
+              saving={saving}
               onToggleOpen={() => setOpen(path.id)}
               onToggleModule={handleModule}
             />
@@ -461,11 +515,13 @@ function FlagRow({
   label,
   blurb,
   checked,
+  disabled,
   onToggle,
 }: {
   label: string
   blurb: string
   checked: boolean
+  disabled: boolean
   onToggle: (value: boolean) => void
 }) {
   return (
@@ -474,6 +530,7 @@ function FlagRow({
         type="checkbox"
         className="h-4 w-4 accent-jera-red"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onToggle(e.target.checked)}
       />
       <span className="text-[13px] font-semibold text-text">{label}</span>
@@ -485,8 +542,10 @@ function FlagRow({
 // ── Admin / manager view ──────────────────────────────────────────────────────
 
 function TeamView() {
-  const [, bump] = useReducer((n: number) => n + 1, 0)
-  const rows = getBillableSummary()
+  const { rows, loading, error } = useTrainingTeam()
+
+  if (loading) return <LoadingCards />
+  if (error) return <LoadError what="the training tracker" error={error} />
 
   const tracked = rows.length
   const enrolled = rows.filter((r) => r.ilt_date_entered).length
@@ -570,7 +629,6 @@ function TeamView() {
               rows={rows}
               headerTone="dark"
               rowKey={(r) => r.employee_id}
-              onRowClick={() => bump()}
             />
           </div>
         )}

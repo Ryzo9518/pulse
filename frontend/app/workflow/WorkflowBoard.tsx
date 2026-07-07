@@ -4,41 +4,40 @@
 // The onboarding task-board core, extracted from the page so it can be unit-
 // tested without the AppShell/Sidebar (which depend on layout-only hooks).
 //
+// WS-2: data now flows through useWorkflow() — live (phases/tasks/instances +
+// the selected instance's onboarding_task_status via the authenticated proxy;
+// writes via server actions where RLS + the freeze/order triggers govern) or
+// the mock seam behind the NEXT_PUBLIC_PULSE_DATA flag, unchanged UI either way.
+//
 // Every role gets the SAME phase-accordion shape (Pre-Arrival → Day 1 → IT Setup
 // → HR Admin → Orientation) with per-phase progress bars; the active role only
-// changes WHICH phases/tasks are visible. That role scoping lives in the data
-// layer — listPhases(role)/listTasks(role) — so a manager never sees the HR-admin
-// phase or the contract/NDA task (HANDOFF §2). The board just passes the role.
+// changes WHICH phases/tasks are visible (a manager never sees the HR-admin
+// phase or the contract/NDA task — HANDOFF §2; live rows are RLS-scoped too).
 //
 // The defining per-task control is OWNER ASSIGNMENT (admins only, gated by
-// can(role,'assignTaskOwners')): an owner <select> drawn from the roster that
-// fires an "assignment email sent" toast and persists via the setTaskOwner
-// mutator, plus a ✉ resend button. Priority dots and Zoho/M365 system badges
-// (decision D4) are kept but secondary. Status is a done/pending checkbox with an
-// inferred in-progress state, matching the prototype; the legacy Start/Done
-// button is kept alongside as a secondary affordance.
-//
-// All mutation goes through the centralized mock mutators; a local version
-// counter forces a re-render so the UI reflects freshly-read state.
+// can(role,'assignTaskOwners')): an owner <select> drawn from the roster, plus
+// a ✉ resend button. Status is a done/pending checkbox with an inferred
+// in-progress state; the legacy Start/Done button is kept as a secondary
+// affordance. On the live board employees are READ-ONLY (contract C7-emp): the
+// status controls render only for admin/manager; an onboardee sees their task
+// list with status badges.
 
 import { useCallback, useMemo, useState } from 'react'
 
-import type { Employee, OnboardingTask, TaskStatus, UserRole } from '@/types/database'
-import {
-  listPhases,
-  listTasks,
-  listAssignableOwners,
-  getTaskStatus,
-  setTaskStatus,
-  getTaskOwner,
-  setTaskOwner,
-  getEmployee,
-} from '@/lib/mock'
-import { can } from '@/lib/capabilities'
+import type {
+  Employee,
+  OnboardingPhase,
+  OnboardingTask,
+  TaskStatus,
+  UserRole,
+} from '@/types/database'
+import { useWorkflow, type WriteOutcome } from '@/lib/data/useWorkflow'
+import { progressOf } from '@/lib/data/workflow-live'
 import {
   Badge,
   Button,
   Card,
+  EmptyState,
   Modal,
   ProgressBar,
   Select,
@@ -69,6 +68,8 @@ function ownerEmail(employee: Employee | undefined): string {
 
 export interface WorkflowBoardProps {
   role: UserRole
+  /** The signed-in employee's id (live) — picks their own instance by default. */
+  viewerEmployeeId?: string
 }
 
 interface IntegrationTarget {
@@ -76,92 +77,100 @@ interface IntegrationTarget {
   system: string
 }
 
-export function WorkflowBoard({ role }: WorkflowBoardProps) {
+export function WorkflowBoard({ role, viewerEmployeeId }: WorkflowBoardProps) {
   const { toast } = useToast()
-  // Bumping `version` after a mutation re-reads accessor state and re-renders.
-  const [version, setVersion] = useState(0)
-  const bump = useCallback(() => setVersion((v) => v + 1), [])
+  const board = useWorkflow(role, viewerEmployeeId)
 
   const [integration, setIntegration] = useState<IntegrationTarget | null>(null)
   // Records a mock contract "upload" so the UI can reflect it (no real upload).
   const [uploadedContract, setUploadedContract] = useState<string | null>(null)
 
-  const canAssignOwners = can(role, 'assignTaskOwners')
+  const { canAssignOwners, canWriteStatus, statusOf, ownerOf, savingTaskId } = board
 
-  // Re-read role-scoped tasks/phases whenever the role or version changes. This
-  // is the single visibility boundary: a manager gets no HR-admin phase and no
-  // contract task because the accessor layer drops them (HANDOFF §2).
-  const tasks = useMemo(() => listTasks(role), [role, version])
-  const phases = useMemo(() => listPhases(role), [role])
-
-  // Roster for the owner <select> (admins only ever render it).
-  const owners = useMemo(() => listAssignableOwners(), [])
   const ownerOptions = useMemo(
     () => [
       { value: '', label: 'Unassigned' },
-      ...owners.map((e) => ({ value: e.id, label: e.display_name })),
+      ...board.owners.map((e) => ({ value: e.id, label: e.display_name })),
     ],
-    [owners],
+    [board.owners],
   )
 
-  const statusOf = useCallback(
-    (taskId: string): TaskStatus => getTaskStatus(taskId)?.status ?? 'pending',
-    // version is a dependency so memoized consumers recompute after a mutation
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [version],
+  const instanceOptions = useMemo(
+    () =>
+      board.instances.map((w) => ({ value: w.id, label: w.employeeName })),
+    [board.instances],
   )
 
-  const ownerOf = useCallback(
-    (taskId: string): Employee | undefined => {
-      const id = getTaskOwner(taskId)
-      return id ? getEmployee(id) : undefined
+  const progress = useMemo(
+    () => progressOf(board.tasks, statusOf),
+    [board.tasks, statusOf],
+  )
+
+  // Surfaces a write failure per the outcome contract: the DB's own message
+  // (MSG-DENY-TRIGGER) or the generic save error (MSG-ERR-GENERIC); an RLS
+  // zero-row denial (MSG-DENY-RLS) is silent — the view simply doesn't change.
+  const handleFailure = useCallback(
+    (result: WriteOutcome) => {
+      if (result.ok || result.denied) return
+      toast({
+        title: "Couldn't save",
+        message:
+          result.error ??
+          'Something went wrong — your changes were not saved. Try again.',
+        variant: 'error',
+      })
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [version],
+    [toast],
   )
 
   // Primary status control: a checkbox that toggles done <-> not-done. A
   // not-done task that has been started reads as 'inprogress'; otherwise
   // 'pending' (matching the prototype's inferred status).
   const toggleDone = useCallback(
-    (task: OnboardingTask) => {
+    async (task: OnboardingTask) => {
       const isDone = statusOf(task.id) === 'done'
-      setTaskStatus(task.id, isDone ? 'pending' : 'done')
-      if (!isDone) {
+      const result = await board.setStatus(task.id, isDone ? 'pending' : 'done')
+      if (result.ok && !isDone) {
         toast({
           title: 'Task complete',
           message: `"${task.title}" marked done.`,
           variant: 'success',
         })
       }
-      bump()
+      handleFailure(result)
     },
-    [statusOf, toast, bump],
+    [board, statusOf, toast, handleFailure],
   )
 
   // Secondary status control: advance pending -> inprogress -> done.
   const advance = useCallback(
-    (task: OnboardingTask) => {
+    async (task: OnboardingTask) => {
       const current = statusOf(task.id)
       const next: TaskStatus = current === 'inprogress' ? 'done' : 'inprogress'
-      setTaskStatus(task.id, next)
-      if (next === 'done') {
+      const result = await board.setStatus(task.id, next)
+      if (result.ok && next === 'done') {
         toast({
           title: 'Task complete',
           message: `"${task.title}" marked done.`,
           variant: 'success',
         })
       }
-      bump()
+      handleFailure(result)
     },
-    [statusOf, toast, bump],
+    [board, statusOf, toast, handleFailure],
   )
 
-  // The defining interaction: assigning an owner fires an assignment email.
+  // The defining admin interaction: assigning an owner.
   const assignOwner = useCallback(
-    (task: OnboardingTask, ownerId: string) => {
-      setTaskOwner(task.id, ownerId || null)
-      const person = ownerId ? getEmployee(ownerId) : undefined
+    async (task: OnboardingTask, ownerId: string) => {
+      const result = await board.assignOwner(task.id, ownerId || null)
+      if (!result.ok) {
+        handleFailure(result)
+        return
+      }
+      const person = ownerId
+        ? board.owners.find((e) => e.id === ownerId)
+        : undefined
       if (person) {
         toast({
           title: 'Task assigned',
@@ -174,9 +183,8 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
           message: `"${task.title}" has no owner.`,
         })
       }
-      bump()
     },
-    [toast, bump],
+    [board, toast, handleFailure],
   )
 
   const resendAssignmentEmail = useCallback(
@@ -207,6 +215,7 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
     const isInProgress = status === 'inprogress'
     const prio = PRIORITY_COLOR[task.priority] ?? 'grey'
     const owner = ownerOf(task.id)
+    const saving = savingTaskId === task.id
 
     return (
       <div
@@ -215,21 +224,36 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
         data-status={status}
         className="flex items-start gap-3 border-b border-surface-border-light py-3 last:border-b-0"
       >
-        {/* Primary status control: done/pending checkbox. */}
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={isDone}
-          aria-label={`Mark "${task.title}" ${isDone ? 'not done' : 'done'}`}
-          onClick={() => toggleDone(task)}
-          className={`mt-[2px] flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-[12px] font-bold transition-colors ${
-            isDone
-              ? 'border border-jera-red bg-jera-red text-white'
-              : 'border-[1.5px] border-surface-border bg-white text-transparent hover:border-jera-red/50'
-          }`}
-        >
-          {isDone ? '✓' : ''}
-        </button>
+        {/* Primary status control: done/pending checkbox (admin/manager). An
+            onboardee's live board is read-only (C7-emp) — badge instead. */}
+        {canWriteStatus ? (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={isDone}
+            disabled={saving}
+            aria-label={`Mark "${task.title}" ${isDone ? 'not done' : 'done'}`}
+            onClick={() => void toggleDone(task)}
+            className={`mt-[2px] flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-[12px] font-bold transition-colors disabled:opacity-50 ${
+              isDone
+                ? 'border border-jera-red bg-jera-red text-white'
+                : 'border-[1.5px] border-surface-border bg-white text-transparent hover:border-jera-red/50'
+            }`}
+          >
+            {isDone ? '✓' : ''}
+          </button>
+        ) : (
+          <span
+            aria-hidden
+            className={`mt-[2px] flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-[12px] font-bold ${
+              isDone
+                ? 'border border-jera-red bg-jera-red text-white'
+                : 'border-[1.5px] border-surface-border bg-white text-transparent'
+            }`}
+          >
+            {isDone ? '✓' : ''}
+          </span>
+        )}
 
         {/* Secondary priority dot (decision D4 — kept, de-emphasised). */}
         <span
@@ -296,7 +320,8 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
                 aria-label={`Assign owner for ${task.title}`}
                 value={owner?.id ?? ''}
                 options={ownerOptions}
-                onChange={(e) => assignOwner(task, e.target.value)}
+                disabled={saving}
+                onChange={(e) => void assignOwner(task, e.target.value)}
                 className="max-w-[170px] !py-[6px] !text-[12px]"
               />
               {owner ? (
@@ -331,16 +356,73 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
           {/* Secondary status affordance kept alongside the checkbox. */}
           {isDone ? (
             <Badge color="green">✓ Done</Badge>
-          ) : (
+          ) : canWriteStatus ? (
             <Button
               size="sm"
               variant={isInProgress ? 'secondary' : 'primary'}
-              onClick={() => advance(task)}
+              disabled={saving}
+              onClick={() => void advance(task)}
             >
-              {isInProgress ? '✓ Done' : 'Start'}
+              {saving ? 'Saving…' : isInProgress ? '✓ Done' : 'Start'}
             </Button>
+          ) : (
+            <Badge color={isInProgress ? 'amber' : 'grey'}>
+              {isInProgress ? 'In progress' : 'Pending'}
+            </Badge>
           )}
         </div>
+      </div>
+    )
+  }
+
+  // ── Loading / error / empty states (live data path) ────────────────────────
+  if (board.loading) {
+    return (
+      <div className="px-10 py-8">
+        <Card>
+          <p className="py-8 text-center text-[13px] text-text-muted">
+            Loading onboarding board…
+          </p>
+        </Card>
+      </div>
+    )
+  }
+
+  if (board.error) {
+    return (
+      <div className="px-10 py-8">
+        <Card>
+          <EmptyState
+            icon="⚠️"
+            title="Couldn't load the onboarding board"
+            description={`Something went wrong (${board.error}). Refresh to try again.`}
+          />
+        </Card>
+      </div>
+    )
+  }
+
+  if (!board.hasWorkflow) {
+    // No onboarding workflow instance exists for this viewer — the empty state,
+    // never a phantom 0% task list.
+    const staff = role === 'admin' || role === 'manager'
+    return (
+      <div className="px-10 py-8">
+        <Card>
+          <EmptyState
+            icon="🗂️"
+            title={
+              staff
+                ? 'No active onboarding workflows'
+                : 'No onboarding workflow yet'
+            }
+            description={
+              staff
+                ? 'Nobody is being onboarded right now. Onboard a new hire to create their workflow and task list.'
+                : "You don't have an active onboarding workflow. If you're a new starter, HR will schedule your onboarding shortly."
+            }
+          />
+        </Card>
       </div>
     )
   }
@@ -359,9 +441,47 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
         </div>
       ) : null}
 
+      {/* Live boards can hold several onboarding instances (one per new hire):
+          staff pick whose onboarding they're viewing; progress = done/total. */}
+      {board.instances.length > 0 ? (
+        <div className="mb-4 flex flex-wrap items-center gap-4 rounded-card border border-surface-border bg-surface-card px-5 py-4 shadow-card">
+          {(role === 'admin' || role === 'manager') &&
+          board.instances.length > 0 ? (
+            <label className="flex items-center gap-2 text-[12.5px] font-semibold text-text-secondary">
+              Onboarding for
+              <Select
+                aria-label="Select whose onboarding to view"
+                value={board.selectedId ?? ''}
+                options={instanceOptions}
+                onChange={(e) => board.select(e.target.value)}
+                className="max-w-[220px] !py-[6px] !text-[12px]"
+              />
+            </label>
+          ) : (
+            <span className="text-[12.5px] font-semibold text-text-secondary">
+              {
+                board.instances.find((w) => w.id === board.selectedId)
+                  ?.employeeName
+              }
+            </span>
+          )}
+          <div className="flex min-w-[200px] flex-1 items-center gap-3">
+            <div className="flex-1">
+              <ProgressBar
+                percent={progress.pct}
+                ariaLabel="Overall onboarding progress"
+              />
+            </div>
+            <span className="whitespace-nowrap text-[12px] text-text-muted">
+              {progress.done}/{progress.total} tasks · {progress.pct}%
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       <PhaseAccordion
-        tasks={tasks}
-        phases={phases}
+        tasks={board.tasks}
+        phases={board.phases}
         statusOf={statusOf}
         renderTaskRow={renderTaskRow}
       />
@@ -395,7 +515,7 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
               .
             </p>
             <p className="text-text-muted">
-              No live integration runs in this mock phase — this dialog is a stub
+              No live integration runs in this phase — this dialog is a stub
               showing where the connection will sit.
             </p>
           </div>
@@ -409,7 +529,7 @@ export function WorkflowBoard({ role }: WorkflowBoardProps) {
 
 interface PhaseAccordionProps {
   tasks: OnboardingTask[]
-  phases: ReturnType<typeof listPhases>
+  phases: OnboardingPhase[]
   statusOf: (taskId: string) => TaskStatus
   renderTaskRow: (task: OnboardingTask) => React.ReactNode
 }

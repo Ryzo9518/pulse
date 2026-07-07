@@ -35,6 +35,18 @@ export const WRITE_ALLOWLIST: Record<string, ReadonlyArray<string>> = {
   // Policy acknowledgements: a user upserts their own ack (insert/update); a DB
   // trigger recomputes policies_completed. RLS scopes to the signed-in employee.
   hr_policy_acknowledgements: ['POST', 'PATCH'],
+  // ── WS-4 Expenses ──────────────────────────────────────────────────────────
+  // Claims: owner creates drafts (POST) and edits/submits them (PATCH); the
+  // approver set approves/returns and admin marks paid (PATCH) — the DB's
+  // enforce_expense_transition trigger + RLS govern every transition. No
+  // DELETE: claims are never removed through the UI. Line tables are replaced
+  // wholesale while the parent claim is draft/returned (self-or-admin RLS).
+  // aa_rate_certificates: per-person AA rates upsert (self-or-admin RLS).
+  expense_claims: ['POST', 'PATCH'],
+  expense_travel_lines: ['POST', 'PATCH', 'DELETE'],
+  expense_other_lines: ['POST', 'PATCH', 'DELETE'],
+  expense_advance_lines: ['POST', 'PATCH', 'DELETE'],
+  aa_rate_certificates: ['POST', 'PATCH'],
   // WS-5 Certifications: any role adds/edits/removes OWN certs; admin manages
   // anyone's. RLS is the authority (cert_ins/cert_upd/cert_del: self-or-admin;
   // managers get team READ only via cert_sel) — this entry just opens the proxy.
