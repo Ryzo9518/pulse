@@ -174,7 +174,7 @@ export function WorkflowBoard({ role, viewerEmployeeId }: WorkflowBoardProps) {
       if (person) {
         toast({
           title: 'Task assigned',
-          message: `"${task.title}" assigned to ${person.display_name} — assignment email sent.`,
+          message: `"${task.title}" assigned to ${person.display_name}. Email notifications are coming soon — let them know directly for now.`,
           variant: 'success',
         })
       } else {
@@ -185,16 +185,6 @@ export function WorkflowBoard({ role, viewerEmployeeId }: WorkflowBoardProps) {
       }
     },
     [board, toast, handleFailure],
-  )
-
-  const resendAssignmentEmail = useCallback(
-    (task: OnboardingTask, owner: Employee) => {
-      toast({
-        title: 'Assignment email sent',
-        message: `${owner.display_name} was emailed about "${task.title}".`,
-      })
-    },
-    [toast],
   )
 
   const onContractUpload = useCallback(
@@ -324,17 +314,6 @@ export function WorkflowBoard({ role, viewerEmployeeId }: WorkflowBoardProps) {
                 onChange={(e) => void assignOwner(task, e.target.value)}
                 className="max-w-[170px] !py-[6px] !text-[12px]"
               />
-              {owner ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label={`Resend assignment email to ${ownerEmail(owner)}`}
-                  title={`Resend assignment email to ${ownerEmail(owner)}`}
-                  onClick={() => resendAssignmentEmail(task, owner)}
-                >
-                  ✉
-                </Button>
-              ) : null}
             </span>
           ) : null}
 
@@ -435,8 +414,8 @@ export function WorkflowBoard({ role, viewerEmployeeId }: WorkflowBoardProps) {
             ✉
           </span>
           <span className="text-[12.5px] text-text-secondary">
-            Assign responsibility per task using the dropdown — the assignee is
-            emailed automatically. Use ✉ to resend.
+            Assign responsibility per task using the dropdown — email
+            notifications are coming soon; for now, let assignees know directly.
           </span>
         </div>
       ) : null}
