@@ -1,7 +1,7 @@
 // ── Policies gate: the pure compliance guard decision (plan R4) ───────────────
 // This module encodes the single rule that protects PULSE's highest-risk
 // compliance control: an onboarding employee may not reach the gated onboarding
-// sections until they have acknowledged ALL 20 HR policies.
+// sections until they have acknowledged ALL HR policies.
 //
 // It is intentionally framework-agnostic and side-effect-free:
 //   - no React, no Next.js, no imports from the mock layer
